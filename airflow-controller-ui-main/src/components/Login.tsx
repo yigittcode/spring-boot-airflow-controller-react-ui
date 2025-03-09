@@ -76,22 +76,30 @@ export default function Login({ onLoginSuccess }: LoginProps) {
     setError(null);
 
     try {
-      // Create temporary auth header for authentication
-      const tempAuthHeader = `Basic ${btoa(`${credentials.username}:${credentials.password}`)}`;
+      // Login request body
+      const loginRequest = {
+        username: credentials.username,
+        password: credentials.password
+      };
       
-      // Verify credentials with backend
-      await axios.post(
-        `${credentials.serverUrl}/api/v1/auth/verify`,
-        {},
+      // Send login request to backend
+      const response = await axios.post(
+        `${credentials.serverUrl}/api/auth/login`,
+        loginRequest,
         {
           headers: {
-            'Authorization': tempAuthHeader
+            'Content-Type': 'application/json'
           }
         }
       );
 
       // If we reach here, authentication was successful
-      saveCredentials(credentials);
+      // Store credentials and JWT token in local storage
+      const authData = {
+        ...credentials,
+        token: response.data.token
+      };
+      saveCredentials(authData);
       onLoginSuccess();
     } catch (err: any) {
       if (err.response?.status === 401) {

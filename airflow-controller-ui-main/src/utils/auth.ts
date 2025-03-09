@@ -6,6 +6,7 @@ export interface AuthCredentials {
   username: string;
   password: string;
   serverUrl: string;
+  token?: string;
 }
 
 export const saveCredentials = (credentials: AuthCredentials): void => {
@@ -38,6 +39,12 @@ export const getAuthHeader = (): string | null => {
   const credentials = getCredentials();
   if (!credentials) return null;
   
+  // If a JWT token is available, use it
+  if (credentials.token) {
+    return `Bearer ${credentials.token}`;
+  }
+  
+  // Fallback to basic auth (for older implementation)
   const { username, password } = credentials;
   return `Basic ${Base64.encode(`${username}:${password}`)}`;
 };
