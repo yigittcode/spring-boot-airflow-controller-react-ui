@@ -1,6 +1,6 @@
 package com.yigit.airflow_spring_rest_controller.controller;
 
-import com.yigit.airflow_spring_rest_controller.model.AuthResponse;
+import com.yigit.airflow_spring_rest_controller.dto.auth.AuthResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

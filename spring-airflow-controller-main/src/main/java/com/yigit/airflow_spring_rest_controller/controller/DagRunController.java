@@ -1,12 +1,12 @@
 package com.yigit.airflow_spring_rest_controller.controller;
 
-import com.yigit.airflow_spring_rest_controller.model.DagRunCollection;
-import com.yigit.airflow_spring_rest_controller.model.DagRunCreate;
-import com.yigit.airflow_spring_rest_controller.model.DagRun;
-import com.yigit.airflow_spring_rest_controller.model.DagRunStateUpdate;
-import com.yigit.airflow_spring_rest_controller.model.DagRunClear;
-import com.yigit.airflow_spring_rest_controller.model.DatasetEventCollection;
-import com.yigit.airflow_spring_rest_controller.model.DagRunNoteUpdate;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRun;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunCollection;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunCreate;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunStateUpdate;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunClear;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunNoteUpdate;
+import com.yigit.airflow_spring_rest_controller.dto.dataset.DatasetEventCollection;
 import com.yigit.airflow_spring_rest_controller.service.DagRunService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;

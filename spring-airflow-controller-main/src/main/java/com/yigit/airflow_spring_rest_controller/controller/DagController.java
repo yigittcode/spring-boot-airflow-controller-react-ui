@@ -1,7 +1,10 @@
 package com.yigit.airflow_spring_rest_controller.controller;
 
-import com.yigit.airflow_spring_rest_controller.model.Dag;
-import com.yigit.airflow_spring_rest_controller.model.DagCollection;
+import com.yigit.airflow_spring_rest_controller.dto.dag.Dag;
+import com.yigit.airflow_spring_rest_controller.dto.dag.DagCollection;
+import com.yigit.airflow_spring_rest_controller.dto.dag.DagDetail;
+import com.yigit.airflow_spring_rest_controller.dto.dag.DagUpdate;
+import com.yigit.airflow_spring_rest_controller.dto.task.TaskCollection;
 import com.yigit.airflow_spring_rest_controller.service.DagService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -13,10 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
-import com.yigit.airflow_spring_rest_controller.model.DagUpdate;
 import reactor.core.publisher.Mono;
-import com.yigit.airflow_spring_rest_controller.model.TaskCollection;
-import com.yigit.airflow_spring_rest_controller.model.DagDetail;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.springframework.web.bind.annotation.RequestParam;

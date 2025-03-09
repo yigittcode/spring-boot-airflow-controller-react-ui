@@ -1,6 +1,12 @@
 package com.yigit.airflow_spring_rest_controller.service;
 
-import com.yigit.airflow_spring_rest_controller.model.*;
+import com.yigit.airflow_spring_rest_controller.dto.dag.Dag;
+import com.yigit.airflow_spring_rest_controller.dto.dag.DagCollection;
+import com.yigit.airflow_spring_rest_controller.dto.dag.DagDetail;
+import com.yigit.airflow_spring_rest_controller.dto.dag.DagUpdate;
+import com.yigit.airflow_spring_rest_controller.dto.task.TaskCollection;
+import com.yigit.airflow_spring_rest_controller.dto.task.TaskInstanceCollection;
+import com.yigit.airflow_spring_rest_controller.dto.task.TaskInstanceStateUpdate;
 import com.yigit.airflow_spring_rest_controller.exception.AirflowResourceNotFoundException;
 import com.yigit.airflow_spring_rest_controller.exception.AirflowConflictException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -90,22 +96,5 @@ public class DagService {
                 response -> Mono.error(new AirflowResourceNotFoundException("DAG not found: " + dagId))
             )
             .bodyToMono(DagDetail.class);
-    }
-
-    public Mono<TaskInstanceCollection> updateTaskInstancesState(String dagId, TaskInstanceStateUpdate stateUpdate) {
-        return airflowWebClient.post()
-            .uri("/dags/{dagId}/updateTaskInstancesState", dagId)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(stateUpdate)
-            .retrieve()
-            .onStatus(
-                status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException("DAG not found: " + dagId))
-            )
-            .onStatus(
-                status -> status.value() == HttpStatus.CONFLICT.value(),
-                response -> Mono.error(new AirflowConflictException("Invalid state transition requested for task instances"))
-            )
-            .bodyToMono(TaskInstanceCollection.class);
     }
 } 

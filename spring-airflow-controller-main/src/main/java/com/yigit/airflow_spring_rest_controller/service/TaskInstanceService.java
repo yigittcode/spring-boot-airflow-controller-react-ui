@@ -1,7 +1,7 @@
 package com.yigit.airflow_spring_rest_controller.service;
 
-import com.yigit.airflow_spring_rest_controller.model.TaskInstance;
-import com.yigit.airflow_spring_rest_controller.model.TaskInstanceCollection;
+import com.yigit.airflow_spring_rest_controller.dto.task.TaskInstance;
+import com.yigit.airflow_spring_rest_controller.dto.task.TaskInstanceCollection;
 import com.yigit.airflow_spring_rest_controller.exception.AirflowResourceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;

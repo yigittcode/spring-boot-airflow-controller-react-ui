@@ -1,6 +1,12 @@
 package com.yigit.airflow_spring_rest_controller.service;
 
-import com.yigit.airflow_spring_rest_controller.model.*;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRun;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunCollection;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunCreate;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunStateUpdate;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunClear;
+import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunNoteUpdate;
+import com.yigit.airflow_spring_rest_controller.dto.dataset.DatasetEventCollection;
 import com.yigit.airflow_spring_rest_controller.exception.AirflowResourceNotFoundException;
 import com.yigit.airflow_spring_rest_controller.exception.AirflowConflictException;
 import org.springframework.beans.factory.annotation.Autowired;
