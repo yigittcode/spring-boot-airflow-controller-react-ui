@@ -77,7 +77,12 @@ export default function TaskLog({ dagId, dagRunId, taskId, maxTryNumber = 1 }: T
       );
       setLogs(fetchedLogs || 'No logs available for this try number');
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch logs');
+      // Check for permission errors (403 Forbidden)
+      if (err.response && err.response.status === 403) {
+        setError('You do not have permission to view these logs. Please contact your administrator.');
+      } else {
+        setError(err.message || 'Failed to fetch logs');
+      }
       console.error('Error fetching logs:', err);
     } finally {
       setLoading(false);

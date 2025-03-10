@@ -1,13 +1,14 @@
 import { getApiClient } from '../utils/apiClient';
 import { AxiosResponse } from 'axios';
 import { DagActionLog, DagActionLogResponse } from '../types';
+import { API } from '../config/api.config';
 
 /**
  * Get task logs
  */
 export const getTaskLogs = async (dagId: string, dagRunId: string, taskId: string, tryNumber: number = 1): Promise<string> => {
   try {
-    const response = await getApiClient().get(`/v1/logs/${dagId}/dagRuns/${dagRunId}/taskInstances/${taskId}`, {
+    const response = await getApiClient().get(`${API.VERSION}/logs/${dagId}/dagRuns/${dagRunId}/taskInstances/${taskId}`, {
       params: { tryNumber }
     });
     return typeof response.data === 'string' ? response.data : 'Log data is not available or in an unexpected format.';
@@ -22,7 +23,7 @@ export const getTaskLogs = async (dagId: string, dagRunId: string, taskId: strin
  */
 export const getDagActionLogs = async (page: number = 0, size: number = 20): Promise<DagActionLogResponse> => {
   try {
-    const response = await getApiClient().get('/logs/dag-actions', {
+    const response = await getApiClient().get(`${API.VERSION}/logs/dag-actions`, {
       params: { page, size }
     });
     
@@ -43,7 +44,7 @@ export const getDagActionLogs = async (page: number = 0, size: number = 20): Pro
  */
 export const getDagActionLogsByDagId = async (dagId: string): Promise<DagActionLog[]> => {
   try {
-    const response = await getApiClient().get(`/logs/dag-actions/dag/${dagId}`);
+    const response = await getApiClient().get(`${API.VERSION}/logs/dag-actions/dag/${dagId}`);
     // Ensure we return an array, handle possible formats from reactive backend
     return Array.isArray(response.data) ? response.data : [];
   } catch (error) {
@@ -57,7 +58,7 @@ export const getDagActionLogsByDagId = async (dagId: string): Promise<DagActionL
  */
 export const getDagActionLogsByType = async (actionType: string): Promise<DagActionLog[]> => {
   try {
-    const response = await getApiClient().get(`/logs/dag-actions/type/${actionType}`);
+    const response = await getApiClient().get(`${API.VERSION}/logs/dag-actions/type/${actionType}`);
     // Ensure we return an array, handle possible formats from reactive backend
     return Array.isArray(response.data) ? response.data : [];
   } catch (error) {

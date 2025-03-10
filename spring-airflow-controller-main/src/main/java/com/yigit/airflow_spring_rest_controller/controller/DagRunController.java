@@ -30,11 +30,11 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import java.util.Map;
 import java.util.HashMap;
+import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/api/v1/dags/{dagId}/dagRuns")
-@Tag(name = "DAG Runs", description = "Operations for managing DAG Runs including creating, monitoring, " +
-        "and controlling the execution of DAG instances")
+@RequestMapping("${api.endpoint.prefix}/dags/{dagId}/dagRuns")
+@Tag(name = "DAG Runs", description = "Operations for managing DAG execution runs, including triggering, monitoring, and managing DAG runs")
 public class DagRunController {
 
     private final DagRunService dagRunService;

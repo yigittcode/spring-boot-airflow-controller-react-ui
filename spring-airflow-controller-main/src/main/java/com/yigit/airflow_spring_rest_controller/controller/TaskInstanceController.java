@@ -19,8 +19,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 @RestController
-@RequestMapping("/api/v1/dags/{dagId}/dagRuns/{dagRunId}/taskInstances")
-@Tag(name = "Task Instances", description = "Operations for viewing Airflow Task Instances")
+@RequestMapping("${api.endpoint.prefix}/dags/{dagId}/dagRuns/{dagRunId}/taskInstances")
+@Tag(name = "Task Instances", description = "Operations for managing Task Instances including retrieving task details, " +
+        "updating task instance states, and managing task executions")
 public class TaskInstanceController {
 
     private final TaskInstanceService taskInstanceService;

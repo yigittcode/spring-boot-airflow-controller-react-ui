@@ -2,6 +2,7 @@ package com.yigit.airflow_spring_rest_controller.config;
 
 import com.yigit.airflow_spring_rest_controller.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -34,6 +35,9 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ReactiveUserDetailsService userDetailsService;
+    
+    @Value("${api.endpoint.prefix}")
+    private String apiEndpointPrefix;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -59,7 +63,7 @@ public class SecurityConfig {
             .authorizeExchange(exchanges -> exchanges
                 // Public endpoints - no authentication required
                 .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .pathMatchers("/api/auth/**").permitAll()
+                .pathMatchers(apiEndpointPrefix + "/auth/**").permitAll()
                 
                 // Swagger UI and API Docs
                 .pathMatchers("/v3/api-docs/**", 
@@ -97,7 +101,7 @@ public class SecurityConfig {
                 
                 // Logs access - All authenticated users can access logs
                 // Service layer will handle filtering based on user permissions
-                .pathMatchers("/api/logs/**").authenticated()
+                .pathMatchers("/api/v1/logs/**").authenticated()
                 
                 // Admin-only operations
                 .pathMatchers("/api/admin/**").hasRole("ADMIN")

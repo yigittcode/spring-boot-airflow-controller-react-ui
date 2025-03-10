@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { 
   Box, 
   TextField, 
@@ -13,7 +13,7 @@ import {
   InputAdornment,
   IconButton
 } from '@mui/material';
-import { saveCredentials, AuthCredentials } from '../utils/auth';
+import { saveCredentials, AuthCredentials, resetToken } from '../utils/auth';
 import { resetApiClient } from '../utils/apiClient';
 import axios from 'axios';
 import PersonIcon from '@mui/icons-material/Person';
@@ -21,6 +21,7 @@ import LockIcon from '@mui/icons-material/Lock';
 import DnsIcon from '@mui/icons-material/Dns';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
+import { API } from '../config/api.config';
 
 // Airflow logo URL
 const AIRFLOW_LOGO = 'https://airflow.apache.org/images/feature-image.png'; 
@@ -87,7 +88,7 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       
       // Send login request to backend
       const response = await axios.post(
-        `${credentials.serverUrl}/api/auth/login`,
+        `${credentials.serverUrl}${API.FULL_PREFIX}/auth/login`,
         loginRequest,
         {
           headers: {

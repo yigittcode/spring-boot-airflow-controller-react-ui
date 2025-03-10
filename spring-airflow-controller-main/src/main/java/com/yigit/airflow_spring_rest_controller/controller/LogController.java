@@ -17,7 +17,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("${api.endpoint.prefix}")
 @RequiredArgsConstructor
 @Tag(name = "Logs", description = "Operations for retrieving system logs, including DAG operation logs")
 public class LogController {
@@ -121,7 +121,7 @@ public class LogController {
             description = "Authentication failed"
         )
     })
-    @GetMapping("/v1/logs/{dagId}/dagRuns/{dagRunId}/taskInstances/{taskId}")
+    @GetMapping("/logs/{dagId}/dagRuns/{dagRunId}/taskInstances/{taskId}")
     public Mono<String> getTaskInstanceLogs(
             @Parameter(description = "The ID of the DAG", required = true)
             @PathVariable String dagId,

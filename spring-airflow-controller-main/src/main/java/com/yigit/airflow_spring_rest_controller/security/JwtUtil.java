@@ -2,10 +2,14 @@ package com.yigit.airflow_spring_rest_controller.security;
 
 import com.yigit.airflow_spring_rest_controller.entity.User;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.MalformedJwtException;
 import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.UnsupportedJwtException;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.SignatureException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
@@ -50,13 +54,42 @@ public class JwtUtil {
                     .build()
                     .parseClaimsJws(token)
                     .getBody();
+        } catch (SignatureException e) {
+            System.err.println("JWT signature validation failed. Secret key may have been changed: " + e.getMessage());
+            throw e;
+        } catch (ExpiredJwtException e) {
+            System.err.println("JWT token is expired: " + e.getMessage());
+            throw e;
+        } catch (MalformedJwtException e) {
+            System.err.println("JWT token is malformed: " + e.getMessage());
+            throw e;
+        } catch (UnsupportedJwtException e) {
+            System.err.println("JWT token format is unsupported: " + e.getMessage());
+            throw e;
         } catch (JwtException e) {
-            throw new JwtException("Invalid JWT token: " + e.getMessage());
+            System.err.println("Invalid JWT token: " + e.getMessage());
+            throw e;
         }
     }
 
     private Boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
+        try {
+            final Date expiration = extractExpiration(token);
+            boolean expired = expiration.before(new Date());
+            if (expired) {
+                // Calculate how long ago the token expired
+                long millisSinceExpired = System.currentTimeMillis() - expiration.getTime();
+                String timeAgo = String.format("%.2f minutes ago", millisSinceExpired / (1000.0 * 60));
+                System.out.println("Token expired " + timeAgo + " for user " + extractUsername(token));
+            }
+            return expired;
+        } catch (ExpiredJwtException e) {
+            System.err.println("Token is already expired: " + e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            System.err.println("Error checking token expiration: " + e.getMessage());
+            return true; // Assume expired if we can't check
+        }
     }
 
     public String generateToken(User user) {
@@ -80,8 +113,30 @@ public class JwtUtil {
     public Boolean validateToken(String token, UserDetails userDetails) {
         try {
             final String username = extractUsername(token);
-            return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+            
+            if (!username.equals(userDetails.getUsername())) {
+                System.out.println("Token validation failed: Username mismatch. Token: " + username + ", UserDetails: " + userDetails.getUsername());
+                return false;
+            }
+            
+            boolean expired = isTokenExpired(token);
+            if (expired) {
+                System.out.println("Token validation failed: Token is expired for user " + username);
+                return false;
+            }
+            
+            return true;
+        } catch (ExpiredJwtException e) {
+            System.err.println("Token expired for user: " + e.getClaims().getSubject());
+            throw e; // Rethrow to allow specific handling
+        } catch (SignatureException e) {
+            System.err.println("JWT signature validation failed. Secret key may have changed: " + e.getMessage());
+            throw e; // Rethrow to allow specific handling
         } catch (JwtException e) {
+            System.err.println("JWT validation error: " + e.getMessage());
+            throw e; // Rethrow to allow specific handling
+        } catch (Exception e) {
+            System.err.println("Error validating token: " + e.getMessage());
             return false;
         }
     }
@@ -90,6 +145,7 @@ public class JwtUtil {
         try {
             return (String) extractAllClaims(token).get("airflowUsername");
         } catch (JwtException e) {
+            System.err.println("Could not extract airflow username from token: " + e.getMessage());
             return null;
         }
     }
@@ -98,6 +154,7 @@ public class JwtUtil {
         try {
             return (String) extractAllClaims(token).get("airflowPassword");
         } catch (JwtException e) {
+            System.err.println("Could not extract airflow password from token: " + e.getMessage());
             return null;
         }
     }

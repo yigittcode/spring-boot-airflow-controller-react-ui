@@ -107,7 +107,10 @@ export const hasAnyRole = (roles: string[]): boolean => {
  * Role hierarchy structure based on Apache Airflow RBAC
  * Each role inherits permissions from roles below it
  */
-const ROLE_HIERARCHY = {
+// Define a type for the valid role keys
+type RoleType = 'ADMIN' | 'OP' | 'USER' | 'VIEWER' | 'PUBLIC';
+
+const ROLE_HIERARCHY: Record<RoleType, string[]> = {
   'ADMIN': ['ADMIN', 'OP', 'USER', 'VIEWER', 'PUBLIC'],
   'OP': ['OP', 'USER', 'VIEWER', 'PUBLIC'],
   'USER': ['USER', 'VIEWER', 'PUBLIC'],
@@ -124,7 +127,10 @@ export const hasPermission = (requiredRole: string): boolean => {
   if (!userRole) return false;
   
   // Get all roles that the user effectively has based on hierarchy
-  const effectiveRoles = ROLE_HIERARCHY[userRole] || [];
+  // Check if userRole is a valid key in ROLE_HIERARCHY
+  const effectiveRoles = userRole in ROLE_HIERARCHY 
+    ? ROLE_HIERARCHY[userRole as RoleType] 
+    : [];
   return effectiveRoles.includes(requiredRole);
 };
 
@@ -161,6 +167,15 @@ export const canViewDags = (): boolean => {
  */
 export const canControlTasks = (): boolean => {
   return hasPermission('USER');
+};
+
+/**
+ * Check if user can view task instance logs (currently requires ADMIN role)
+ * Update this function if logs permissions change in the backend
+ */
+export const canViewTaskLogs = (): boolean => {
+  // Currently only ADMIN users can view logs based on the issue description
+  return isAdmin();
 };
 
 /**

@@ -23,12 +23,14 @@ import { TaskInstance } from '../types';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import TaskLog from './TaskLog';
 import BackButton from './common/BackButton';
+import { canViewTaskLogs } from '../utils/auth';
 
 export default function TaskInstances() {
   const { dagId, runId } = useParams<{ dagId: string; runId: string }>();
   const { tasks, loading, error, fetchTaskInstances } = useTaskInstances(dagId, runId);
   const [selectedTask, setSelectedTask] = useState<TaskInstance | null>(null);
   const [logModalOpen, setLogModalOpen] = useState<boolean>(false);
+  const hasLogAccess = canViewTaskLogs();
 
   const getStateColor = (state: string | null): "success" | "info" | "error" | "warning" | "default" => {
     if (!state) return 'default';
@@ -110,13 +112,15 @@ export default function TaskInstances() {
                   <TableCell>{task.operator}</TableCell>
                   <TableCell>{task.try_number}</TableCell>
                   <TableCell>
-                    <IconButton 
-                      size="small" 
-                      onClick={() => handleViewLogs(task)}
-                      title="View logs"
-                    >
-                      <VisibilityIcon />
-                    </IconButton>
+                    {hasLogAccess && (
+                      <IconButton 
+                        size="small" 
+                        onClick={() => handleViewLogs(task)}
+                        title="View logs"
+                      >
+                        <VisibilityIcon />
+                      </IconButton>
+                    )}
                   </TableCell>
                 </TableRow>
               ))

@@ -1,6 +1,7 @@
 package com.yigit.airflow_spring_rest_controller.security;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -18,13 +19,16 @@ public class JwtAuthenticationFilter implements WebFilter {
 
     private final JwtUtil jwtUtil;
     private final ReactiveUserDetailsService userDetailsService;
+    
+    @Value("${api.endpoint.prefix}")
+    private String apiEndpointPrefix;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
         
         // Skip authentication for the login endpoint
-        if (request.getURI().getPath().equals("/api/auth/login")) {
+        if (request.getURI().getPath().equals(apiEndpointPrefix + "/auth/login")) {
             return chain.filter(exchange);
         }
         

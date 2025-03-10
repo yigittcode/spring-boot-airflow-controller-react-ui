@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { logApiError } from './errorHandling';
 import { getAuthHeader, getCredentials, isAuthenticated } from './auth';
+import { API_PREFIX } from '../config/api.config';
 
 // Create an axios instance with default configuration
 const createApiClient = (): AxiosInstance => {

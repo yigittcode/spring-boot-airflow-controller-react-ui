@@ -31,7 +31,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 @RestController
-@RequestMapping("/api/v1/dags")
+@RequestMapping("${api.endpoint.prefix}/dags")
 @Tag(name = "DAGs", description = "Operations for managing Apache Airflow DAGs including retrieving DAG details, " +
         "updating DAG configurations, and managing DAG states")
 public class DagController {
