@@ -8,188 +8,264 @@ import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunClear;
 import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunNoteUpdate;
 import com.yigit.airflow_spring_rest_controller.dto.dataset.DatasetEventCollection;
 import com.yigit.airflow_spring_rest_controller.entity.DagActionLog.ActionType;
-import com.yigit.airflow_spring_rest_controller.exception.AirflowResourceNotFoundException;
-import com.yigit.airflow_spring_rest_controller.exception.AirflowBadRequestException;
-import com.yigit.airflow_spring_rest_controller.exception.AirflowConflictException;
+import com.yigit.airflow_spring_rest_controller.util.WebClientUtil;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.http.HttpStatus;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
+
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Service for interacting with Airflow DAG Runs
+ */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DagRunService {
 
     private final WebClient airflowWebClient;
     private final DagActionLogService dagActionLogService;
-
+    
+    private static final String DAG_BASE_PATH = "/dags/{dagId}/dagRuns";
+    private static final String DAG_RUN_RESOURCE_NAME = "DAG Run";
+    
+    /**
+     * Retrieves a collection of DAG Runs for a specific DAG
+     * 
+     * @param dagId The DAG identifier
+     * @param queryParams Optional query parameters for filtering
+     * @return A Mono containing the DAG Runs
+     */
     public Mono<DagRunCollection> getDagRuns(String dagId, Map<String, String> queryParams) {
-        return airflowWebClient.get()
-            .uri(uriBuilder -> {
-                var builder = uriBuilder.path("/dags/{dagId}/dagRuns");
-                
-                if (queryParams != null) {
-                    queryParams.forEach((key, value) -> {
-                        if (value != null) {
-                            builder.queryParam(key, value);
-                        }
-                    });
-                }
-                
-                return builder.build(dagId);
-            })
-            .retrieve()
-            .onStatus(
-                status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException("DAG not found: " + dagId))
-            )
-            .bodyToMono(DagRunCollection.class);
+        log.info("Retrieving DAG runs for DAG: {}, with filters: {}", dagId, queryParams);
+        Map<String, Object> pathVars = Collections.singletonMap("dagId", dagId);
+        return WebClientUtil.get(
+            airflowWebClient,
+            DAG_BASE_PATH,
+            pathVars,
+            queryParams,
+            DagRunCollection.class,
+            DAG_RUN_RESOURCE_NAME
+        ).doOnSuccess(result -> log.info("Successfully retrieved {} DAG runs for DAG: {}", 
+            result.getDagRuns() != null ? result.getDagRuns().size() : 0, dagId));
     }
 
+    /**
+     * Creates a new DAG Run
+     * 
+     * @param dagId The DAG identifier
+     * @param dagRunCreate The creation parameters
+     * @return A Mono containing the created DAG Run
+     */
     public Mono<DagRun> createDagRun(String dagId, DagRunCreate dagRunCreate) {
-        return airflowWebClient.post()
-            .uri("/dags/{dagId}/dagRuns", dagId)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(dagRunCreate)
-            .retrieve()
-            .onStatus(
-                status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException("DAG not found: " + dagId))
-            )
-            .onStatus(
-                status -> status.value() == HttpStatus.BAD_REQUEST.value(),
-                response -> Mono.error(new AirflowBadRequestException("Invalid request parameters"))
-            )
-            .onStatus(
-                status -> status.value() == HttpStatus.CONFLICT.value(),
-                response -> Mono.error(new AirflowConflictException("DAG Run already exists"))
-            )
-            .bodyToMono(DagRun.class)
-            .flatMap(dagRun -> {
-                String actionDetails = "DAG Run triggered";
-                if (dagRunCreate.getNote() != null && !dagRunCreate.getNote().isEmpty()) {
-                    actionDetails += " with note: " + dagRunCreate.getNote();
-                }
-                
-                return dagActionLogService
-                    .logDagAction(dagId, ActionType.TRIGGERED, actionDetails, true, dagRun.getDagRunId())
-                    .thenReturn(dagRun);
-            });
+        log.info("Creating DAG run for DAG: {}, configuration: {}", dagId, dagRunCreate);
+        Map<String, Object> pathVars = Collections.singletonMap("dagId", dagId);
+        return WebClientUtil.post(
+            airflowWebClient,
+            DAG_BASE_PATH,
+            pathVars,
+            dagRunCreate,
+            DagRun.class,
+            DAG_RUN_RESOURCE_NAME
+        ).flatMap(dagRun -> {
+            String actionDetails = "DAG Run triggered";
+            if (dagRunCreate.getNote() != null && !dagRunCreate.getNote().isEmpty()) {
+                actionDetails += " with note: " + dagRunCreate.getNote();
+            }
+            
+            log.info("DAG run created successfully for DAG: {}, run ID: {}", dagId, dagRun.getDagRunId());
+            
+            return dagActionLogService
+                .logDagAction(dagId, ActionType.TRIGGERED, actionDetails, true, dagRun.getDagRunId())
+                .thenReturn(dagRun);
+        });
     }
-
+    
+    /**
+     * Retrieves a specific DAG Run
+     * 
+     * @param dagId The DAG identifier
+     * @param dagRunId The DAG Run identifier
+     * @return A Mono containing the requested DAG Run
+     */
     public Mono<DagRun> getDagRun(String dagId, String dagRunId) {
-        return airflowWebClient.get()
-            .uri("/dags/{dagId}/dagRuns/{dagRunId}", dagId, dagRunId)
-            .retrieve()
-            .onStatus(
-                status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
-            )
-            .bodyToMono(DagRun.class);
+        log.info("Retrieving DAG run: {} for DAG: {}", dagRunId, dagId);
+        Map<String, Object> pathVars = new HashMap<>();
+        pathVars.put("dagId", dagId);
+        pathVars.put("dagRunId", dagRunId);
+        
+        return WebClientUtil.get(
+            airflowWebClient,
+            DAG_BASE_PATH + "/{dagRunId}",
+            pathVars,
+            null,
+            DagRun.class,
+            DAG_RUN_RESOURCE_NAME
+        ).doOnSuccess(dagRun -> log.info("Successfully retrieved DAG run: {} for DAG: {}", dagRunId, dagId));
     }
 
+    /**
+     * Deletes a specific DAG Run
+     * 
+     * @param dagId The DAG identifier
+     * @param dagRunId The DAG Run identifier
+     * @return A Mono that completes when the DAG Run is deleted
+     */
     public Mono<Void> deleteDagRun(String dagId, String dagRunId) {
-        return airflowWebClient.delete()
-            .uri("/dags/{dagId}/dagRuns/{dagRunId}", dagId, dagRunId)
-            .retrieve()
-            .onStatus(
-                status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
-            )
-            .onStatus(
-                status -> status.value() == HttpStatus.CONFLICT.value(),
-                response -> Mono.error(new AirflowConflictException("DAG Run cannot be deleted in current state"))
-            )
-            .bodyToMono(Void.class)
-            .flatMap(voidReturn -> 
-                dagActionLogService.logDagAction(
-                    dagId, 
-                    ActionType.DELETED, 
-                    "DAG Run deleted: " + dagRunId, 
-                    true, 
-                    dagRunId
-                ).then()
-            );
+        log.info("Deleting DAG run: {} for DAG: {}", dagRunId, dagId);
+        Map<String, Object> pathVars = new HashMap<>();
+        pathVars.put("dagId", dagId);
+        pathVars.put("dagRunId", dagRunId);
+        
+        return WebClientUtil.delete(
+            airflowWebClient,
+            DAG_BASE_PATH + "/{dagRunId}",
+            pathVars,
+            DAG_RUN_RESOURCE_NAME
+        ).then(
+            dagActionLogService.logDagAction(
+                dagId, 
+                ActionType.DELETED, 
+                "DAG Run deleted: " + dagRunId, 
+                true, 
+                dagRunId
+            ).then(Mono.fromRunnable(() -> 
+                log.info("Successfully deleted DAG run: {} for DAG: {}", dagRunId, dagId)
+            ))
+        );
     }
 
+    /**
+     * Updates the state of a specific DAG Run
+     * 
+     * @param dagId The DAG identifier
+     * @param dagRunId The DAG Run identifier
+     * @param stateUpdate The state update configuration
+     * @return A Mono containing the updated DAG Run
+     */
     public Mono<DagRun> updateDagRunState(String dagId, String dagRunId, DagRunStateUpdate stateUpdate) {
-        return airflowWebClient.patch()
-            .uri("/dags/{dagId}/dagRuns/{dagRunId}", dagId, dagRunId)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(stateUpdate)
-            .retrieve()
-            .onStatus(
-                status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
-            )
-            .onStatus(
-                status -> status.value() == HttpStatus.BAD_REQUEST.value(),
-                response -> Mono.error(new AirflowBadRequestException("Invalid state transition"))
-            )
-            .bodyToMono(DagRun.class)
-            .flatMap(dagRun -> {
-                String actionDetails = "DAG Run state changed to: " + stateUpdate.getState();
-                return dagActionLogService
-                    .logDagAction(dagId, ActionType.OTHER, actionDetails, true, dagRunId)
-                    .thenReturn(dagRun);
-            });
+        log.info("Updating state of DAG run: {} for DAG: {} to: {}", dagRunId, dagId, stateUpdate.getState());
+        Map<String, Object> pathVars = new HashMap<>();
+        pathVars.put("dagId", dagId);
+        pathVars.put("dagRunId", dagRunId);
+        
+        return WebClientUtil.patch(
+            airflowWebClient,
+            DAG_BASE_PATH + "/{dagRunId}",
+            pathVars,
+            stateUpdate,
+            DagRun.class,
+            DAG_RUN_RESOURCE_NAME
+        ).flatMap(dagRun -> {
+            String actionDetails = "DAG Run state updated to: " + stateUpdate.getState();
+            ActionType actionType = ActionType.OTHER;
+            
+            log.info("Successfully updated state of DAG run: {} for DAG: {} to: {}", 
+                dagRunId, dagId, stateUpdate.getState());
+            
+            return dagActionLogService.logDagAction(
+                dagId, 
+                actionType, 
+                actionDetails, 
+                true, 
+                dagRunId
+            ).thenReturn(dagRun);
+        });
     }
-
+    
+    /**
+     * Clears a specific DAG Run
+     * 
+     * @param dagId The DAG identifier
+     * @param dagRunId The DAG Run identifier
+     * @param clearRequest The clear operation parameters
+     * @return A Mono containing the cleared DAG Run
+     */
     public Mono<DagRun> clearDagRun(String dagId, String dagRunId, DagRunClear clearRequest) {
-        return airflowWebClient.post()
-            .uri("/dags/{dagId}/dagRuns/{dagRunId}/clear", dagId, dagRunId)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(clearRequest)
-            .retrieve()
-            .onStatus(
-                status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
-            )
-            .onStatus(
-                status -> status.value() == HttpStatus.CONFLICT.value(),
-                response -> Mono.error(new AirflowConflictException("Cannot clear DAG Run in current state"))
-            )
-            .bodyToMono(DagRun.class)
-            .flatMap(dagRun -> {
-                return dagActionLogService
-                    .logDagAction(dagId, ActionType.CLEARED, "DAG Run cleared", true, dagRunId)
-                    .thenReturn(dagRun);
-            });
+        log.info("Clearing DAG run: {} for DAG: {}", dagRunId, dagId);
+        Map<String, Object> pathVars = new HashMap<>();
+        pathVars.put("dagId", dagId);
+        pathVars.put("dagRunId", dagRunId);
+        
+        return WebClientUtil.post(
+            airflowWebClient,
+            DAG_BASE_PATH + "/{dagRunId}/clear",
+            pathVars,
+            clearRequest,
+            DagRun.class,
+            DAG_RUN_RESOURCE_NAME
+        ).flatMap(dagRun -> {
+            log.info("Successfully cleared DAG run: {} for DAG: {}", dagRunId, dagId);
+            
+            return dagActionLogService.logDagAction(
+                dagId, 
+                ActionType.CLEARED, 
+                "DAG Run cleared", 
+                true, 
+                dagRunId
+            ).thenReturn(dagRun);
+        });
     }
 
+    /**
+     * Retrieves upstream dataset events for a specific DAG Run
+     * 
+     * @param dagId The DAG identifier
+     * @param dagRunId The DAG Run identifier
+     * @return A Mono containing the dataset events
+     */
     public Mono<DatasetEventCollection> getUpstreamDatasetEvents(String dagId, String dagRunId) {
-        return airflowWebClient.get()
-            .uri("/dags/{dagId}/dagRuns/{dagRunId}/upstreamDatasetEvents", dagId, dagRunId)
-            .retrieve()
-            .onStatus(
-                status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
-            )
-            .bodyToMono(DatasetEventCollection.class);
+        log.info("Retrieving upstream dataset events for DAG run: {} for DAG: {}", dagRunId, dagId);
+        Map<String, Object> pathVars = new HashMap<>();
+        pathVars.put("dagId", dagId);
+        pathVars.put("dagRunId", dagRunId);
+        
+        return WebClientUtil.get(
+            airflowWebClient,
+            DAG_BASE_PATH + "/{dagRunId}/upstreamDatasetEvents",
+            pathVars,
+            null,
+            DatasetEventCollection.class,
+            DAG_RUN_RESOURCE_NAME
+        ).doOnSuccess(events -> log.info("Successfully retrieved upstream dataset events for DAG run: {} for DAG: {}, count: {}", 
+            dagRunId, dagId, events.getDatasetEvents() != null ? events.getDatasetEvents().size() : 0));
     }
 
+    /**
+     * Sets a note for a specific DAG Run
+     * 
+     * @param dagId The DAG identifier
+     * @param dagRunId The DAG Run identifier
+     * @param noteUpdate The note update
+     * @return A Mono containing the updated DAG Run
+     */
     public Mono<DagRun> setDagRunNote(String dagId, String dagRunId, DagRunNoteUpdate noteUpdate) {
-        return airflowWebClient.patch()
-            .uri("/dags/{dagId}/dagRuns/{dagRunId}/setNote", dagId, dagRunId)
-            .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(noteUpdate)
-            .retrieve()
-            .onStatus(
-                status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
-            )
-            .bodyToMono(DagRun.class)
-            .flatMap(dagRun -> {
-                String actionDetails = "Note updated: " + noteUpdate.getNote();
-                return dagActionLogService
-                    .logDagAction(dagId, ActionType.OTHER, actionDetails, true, dagRunId)
-                    .thenReturn(dagRun);
-            });
+        log.info("Setting note for DAG run: {} for DAG: {}, note: {}", dagRunId, dagId, noteUpdate.getNote());
+        Map<String, Object> pathVars = new HashMap<>();
+        pathVars.put("dagId", dagId);
+        pathVars.put("dagRunId", dagRunId);
+        
+        return WebClientUtil.patch(
+            airflowWebClient,
+            DAG_BASE_PATH + "/{dagRunId}/setNote",
+            pathVars,
+            noteUpdate,
+            DagRun.class,
+            DAG_RUN_RESOURCE_NAME
+        ).flatMap(dagRun -> {
+            log.info("Successfully set note for DAG run: {} for DAG: {}", dagRunId, dagId);
+            
+            return dagActionLogService.logDagAction(
+                dagId, 
+                ActionType.OTHER, 
+                "DAG Run note updated: " + noteUpdate.getNote(), 
+                true, 
+                dagRunId
+            ).thenReturn(dagRun);
+        });
     }
 } 

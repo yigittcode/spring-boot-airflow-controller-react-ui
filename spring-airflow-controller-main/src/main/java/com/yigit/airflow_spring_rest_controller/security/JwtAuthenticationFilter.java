@@ -1,9 +1,8 @@
 package com.yigit.airflow_spring_rest_controller.security;
 
+import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.server.reactive.ServerHttpRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
@@ -15,43 +14,55 @@ import reactor.core.publisher.Mono;
 
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class JwtAuthenticationFilter implements WebFilter {
 
     private final JwtUtil jwtUtil;
     private final ReactiveUserDetailsService userDetailsService;
-    
-    @Value("${api.endpoint.prefix}")
-    private String apiEndpointPrefix;
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-        ServerHttpRequest request = exchange.getRequest();
+        String path = exchange.getRequest().getPath().value();
         
-        // Skip authentication for the login endpoint
-        if (request.getURI().getPath().equals(apiEndpointPrefix + "/auth/login")) {
+        // Skip authentication for login endpoint
+        if (path.contains("/login")) {
+            log.debug("Skipping authentication for login path: {}", path);
             return chain.filter(exchange);
         }
-        
-        String authHeader = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
 
+        String authHeader = exchange.getRequest().getHeaders().getFirst("Authorization");
+        
         if (authHeader != null && authHeader.startsWith("Bearer ")) {
             String jwt = authHeader.substring(7);
-            
             try {
                 String username = jwtUtil.extractUsername(jwt);
-
+                
                 if (username != null) {
+                    log.debug("Processing JWT token for user: {}", username);
+                    
                     return userDetailsService.findByUsername(username)
-                            .filter(userDetails -> jwtUtil.validateToken(jwt, userDetails))
-                            .map(userDetails -> new UsernamePasswordAuthenticationToken(
-                                    userDetails, jwt, userDetails.getAuthorities()))
-                            .flatMap(authentication -> chain.filter(exchange)
-                                    .contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication)));
+                            .flatMap(userDetails -> {
+                                if (jwtUtil.validateToken(jwt, userDetails)) {
+                                    log.debug("Valid JWT token for user: {}", username);
+                                    
+                                    UsernamePasswordAuthenticationToken authentication = 
+                                            new UsernamePasswordAuthenticationToken(
+                                                    userDetails, jwt, userDetails.getAuthorities());
+                                    
+                                    return chain.filter(exchange)
+                                            .contextWrite(ReactiveSecurityContextHolder.withAuthentication(authentication));
+                                }
+                                log.warn("Invalid JWT token for user: {}", username);
+                                return chain.filter(exchange);
+                            });
                 }
+            } catch (JwtException e) {
+                log.error("JWT validation error: {}", e.getMessage());
             } catch (Exception e) {
-                // Log the error but continue the filter chain
-                System.err.println("JWT validation error: " + e.getMessage());
+                log.error("Error during authentication: {}", e.getMessage());
             }
+        } else {
+            log.debug("No JWT token found in request headers");
         }
         
         return chain.filter(exchange);

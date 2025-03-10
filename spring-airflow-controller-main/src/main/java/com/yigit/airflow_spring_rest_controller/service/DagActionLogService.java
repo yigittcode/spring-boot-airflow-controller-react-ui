@@ -7,215 +7,240 @@ import com.yigit.airflow_spring_rest_controller.entity.DagActionLog.ActionType;
 import com.yigit.airflow_spring_rest_controller.entity.Role;
 import com.yigit.airflow_spring_rest_controller.repository.DagActionLogRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.server.reactive.ServerHttpRequest;
-import org.springframework.web.server.ServerWebExchange;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
-import org.springframework.web.reactive.function.server.ServerRequest;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 
+/**
+ * Service for managing DAG action logs
+ */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class DagActionLogService {
 
     private final DagActionLogRepository dagActionLogRepository;
+    
+    // ADMIN rolü tanımı - Spring Security, rolleri otomatik olarak "ROLE_" prefix'i ile kullanabilir
+    // Bu nedenle isAdmin() metodunda her iki format da kontrol edilir
+    private static final String ADMIN_ROLE = Role.ADMIN.name();
+    private static final String UNKNOWN_USER = "unknown";
 
     /**
      * Logs a DAG action with the currently authenticated user
+     * 
+     * @param dagId The DAG identifier
+     * @param actionType The type of action performed
+     * @param actionDetails Details about the action
+     * @param success Whether the action was successful
+     * @param runId Optional run identifier
+     * @return A Mono containing the created log entry
      */
     public Mono<DagActionLog> logDagAction(String dagId, ActionType actionType, String actionDetails, Boolean success, String runId) {
-        logAuthenticationDetails();
-        
-        return ReactiveSecurityContextHolder.getContext()
-                .doOnNext(securityContext -> {
-                    if (securityContext.getAuthentication() != null) {
-                        System.out.println("AUTH USERNAME: " + securityContext.getAuthentication().getName());
-                        System.out.println("AUTH PRINCIPAL: " + securityContext.getAuthentication().getPrincipal());
-                        System.out.println("AUTH CREDENTIALS: " + (securityContext.getAuthentication().getCredentials() != null ? "Present" : "Not present"));
-                        System.out.println("AUTH AUTHORITIES: " + securityContext.getAuthentication().getAuthorities());
-                    } else {
-                        System.out.println("No authentication found in SecurityContext");
-                    }
-                })
-                .map(SecurityContext::getAuthentication)
-                .map(Authentication::getName)
-                .defaultIfEmpty("unknown") // Ensure we always have a username
-                .flatMap(username -> {
-                    LocalDateTime now = LocalDateTime.now();
-                    String actionTypeValue = actionType.getValue();
-                    
-                    // Ensure parameters are never null
-                    String safeUsername = username != null ? username : "unknown";
-                    System.out.println("LOGGING DAG ACTION FOR USER: " + safeUsername);
-                    String safeDagId = dagId != null ? dagId : "";
-                    String safeActionType = actionTypeValue != null ? actionTypeValue : "OTHER";
-                    String safeActionDetails = actionDetails != null ? actionDetails : "";
-                    Boolean safeSuccess = success != null ? success : true;
-                    
-                    // First insert using the custom method
-                    return dagActionLogRepository.insertDagActionLog(
-                            safeUsername,
-                            safeDagId,
-                            safeActionType,
-                            safeActionDetails,
-                            now,
-                            safeSuccess,
-                            runId // runId can be null, SQL will handle it
-                    ).then(
-                        // Then build and return a DagActionLog object for the caller
-                        Mono.just(DagActionLog.builder()
-                            .username(safeUsername)
-                            .dagId(safeDagId)
-                            .actionType(safeActionType)
-                            .actionDetails(safeActionDetails)
-                            .timestamp(now)
-                            .success(safeSuccess)
-                            .runId(runId)
-                            .build())
-                    );
-                });
+        log.info("Logging DAG action: {} for DAG: {}, details: {}, runId: {}", 
+            actionType, dagId, actionDetails, runId != null ? runId : "N/A");
+            
+        return getCurrentUsername()
+            .flatMap(username -> {
+                LocalDateTime now = LocalDateTime.now();
+                String actionTypeValue = actionType != null ? actionType.getValue() : ActionType.OTHER.getValue();
+                
+                // Ensure parameters are never null
+                String safeUsername = username != null ? username : UNKNOWN_USER;
+                String safeDagId = dagId != null ? dagId : "";
+                String safeDetails = actionDetails != null ? actionDetails : "";
+                Boolean safeSuccess = success != null ? success : false;
+                
+                // Use the repository's insertDagActionLog method and return the constructed log object
+                return dagActionLogRepository.insertDagActionLog(
+                        safeUsername, 
+                        safeDagId, 
+                        actionTypeValue, 
+                        safeDetails,
+                        now,
+                        safeSuccess,
+                        runId)
+                    .then(Mono.just(DagActionLog.builder()
+                        .username(safeUsername)
+                        .dagId(safeDagId)
+                        .actionType(actionTypeValue)
+                        .actionDetails(safeDetails)
+                        .timestamp(now)
+                        .success(safeSuccess)
+                        .runId(runId)
+                        .build()))
+                    .doOnSuccess(logEntry -> 
+                        log.info("Successfully logged DAG action: {} for DAG: {}, user: {}", 
+                            actionTypeValue, safeDagId, safeUsername));
+            });
     }
 
     /**
-     * Helper method to log authentication details for debugging
-     */
-    private void logAuthenticationDetails() {
-        System.out.println("------- AUTHENTICATION DEBUG INFO -------");
-        ReactiveSecurityContextHolder.getContext()
-            .map(SecurityContext::getAuthentication)
-            .subscribe(
-                auth -> {
-                    if (auth != null) {
-                        System.out.println("AUTHENTICATION: " + auth.getClass().getName());
-                        System.out.println("USERNAME: " + auth.getName());
-                        System.out.println("PRINCIPAL: " + auth.getPrincipal());
-                        System.out.println("CREDENTIALS: " + (auth.getCredentials() != null ? "Present" : "Not present"));
-                        System.out.println("AUTHENTICATED: " + auth.isAuthenticated());
-                        System.out.println("AUTHORITIES: " + auth.getAuthorities());
-                    } else {
-                        System.out.println("NO AUTHENTICATION OBJECT");
-                    }
-                },
-                error -> System.out.println("ERROR GETTING AUTHENTICATION: " + error.getMessage()),
-                () -> System.out.println("------- END DEBUG INFO -------")
-            );
-    }
-
-    /**
-     * Helper method to check if the current user is an admin
+     * Checks if the current user has admin privileges
+     * 
+     * @return A Mono containing a boolean indicating admin status
      */
     private Mono<Boolean> isAdmin() {
         return ReactiveSecurityContextHolder.getContext()
-                .map(SecurityContext::getAuthentication)
-                .map(auth -> auth.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_ADMIN")));
+            .map(SecurityContext::getAuthentication)
+            .filter(Objects::nonNull)
+            .flatMap(auth -> {
+                boolean isAdmin = auth.getAuthorities().stream()
+                    .anyMatch(authority -> {
+                        String authName = authority.getAuthority();
+                        return authName.equals(ADMIN_ROLE) || authName.equals("ROLE_" + ADMIN_ROLE);
+                    });
+                
+                log.debug("User '{}' admin status: {}", auth.getName(), isAdmin);
+                return Mono.just(isAdmin);
+            })
+            .defaultIfEmpty(false);
     }
-    
+
     /**
-     * Helper method to get the current username
+     * Gets the username of the currently authenticated user
+     * 
+     * @return A Mono containing the username
      */
     private Mono<String> getCurrentUsername() {
         return ReactiveSecurityContextHolder.getContext()
-                .map(SecurityContext::getAuthentication)
-                .map(Authentication::getName);
+            .map(SecurityContext::getAuthentication)
+            .filter(Objects::nonNull)
+            .map(Authentication::getName)
+            .doOnNext(username -> log.debug("Current username: {}", username))
+            .defaultIfEmpty(UNKNOWN_USER);
     }
 
     /**
-     * Get all logs with pagination, filtered by user role
+     * Retrieves all logs with pagination
+     * 
+     * @param page Page number (0-based)
+     * @param size Page size
+     * @return A Mono containing the response with logs and pagination info
      */
     public Mono<DagActionLogResponse> getAllLogs(int page, int size) {
+        log.info("Retrieving all action logs, page: {}, size: {}", page, size);
         int offset = page * size;
         
         return isAdmin()
-                .flatMap(isAdmin -> {
-                    if (isAdmin) {
-                        // Admin can see all logs
-                        return dagActionLogRepository.countAll()
-                                .next()
-                                .flatMap(total -> 
-                                    dagActionLogRepository.findAllWithPagination(size, offset)
-                                            .map(this::mapToDTO)
-                                            .collectList()
-                                            .map(logs -> new DagActionLogResponse(logs, total, page, size))
-                                );
-                    } else {
-                        // Non-admin users can only see their own logs
-                        return getCurrentUsername()
-                                .flatMap(username -> 
-                                    dagActionLogRepository.findByUsername(username)
-                                            .map(this::mapToDTO)
-                                            .collectList()
-                                            .map(logs -> {
-                                                int total = logs.size();
-                                                int fromIndex = offset;
-                                                int toIndex = Math.min(fromIndex + size, total);
-                                                
-                                                return new DagActionLogResponse(
-                                                    fromIndex < total ? logs.subList(fromIndex, toIndex) : java.util.Collections.emptyList(),
-                                                    (long) total,
-                                                    page,
-                                                    size
-                                                );
-                                            })
-                                );
-                    }
-                });
+            .flatMap(isAdmin -> {
+                if (isAdmin) {
+                    log.debug("Admin user retrieving all logs");
+                    return dagActionLogRepository.countAll()
+                        .next()
+                        .flatMap(total -> {
+                            if (total == 0) {
+                                log.debug("No logs found");
+                                return Mono.just(new DagActionLogResponse(
+                                    Collections.emptyList(), 0L, page, size));
+                            }
+                            
+                            return dagActionLogRepository.findAllWithPagination(size, offset)
+                                .map(this::mapToDTO)
+                                .collectList()
+                                .doOnSuccess(logs -> log.info("Retrieved {} logs for admin", logs.size()))
+                                .map(logs -> new DagActionLogResponse(logs, total, page, size));
+                        });
+                } else {
+                    // For non-admin users, get only their logs
+                    return getCurrentUsername()
+                        .flatMap(username -> 
+                            dagActionLogRepository.findByUsername(username)
+                                .map(this::mapToDTO)
+                                .collectList()
+                                .map(allLogs -> {
+                                    long total = allLogs.size();
+                                    List<DagActionLogDTO> pagedLogs;
+                                    
+                                    // Apply pagination manually
+                                    if (offset < total) {
+                                        int toIndex = Math.min(offset + size, allLogs.size());
+                                        pagedLogs = allLogs.subList(offset, toIndex);
+                                    } else {
+                                        pagedLogs = new ArrayList<>();
+                                    }
+                                    
+                                    log.info("Retrieved {} logs for user '{}'", pagedLogs.size(), username);
+                                    return new DagActionLogResponse(pagedLogs, total, page, size);
+                                })
+                        );
+                }
+            });
     }
 
     /**
-     * Get logs for a specific DAG, filtered by user role
+     * Retrieves logs for a specific DAG
+     * 
+     * @param dagId The DAG identifier
+     * @return A Flux of log DTOs
      */
     public Flux<DagActionLogDTO> getLogsByDagId(String dagId) {
+        log.info("Retrieving action logs for DAG: {}", dagId);
         return isAdmin()
-                .flatMapMany(isAdmin -> {
-                    if (isAdmin) {
-                        // Admin can see all logs for the DAG
-                        return dagActionLogRepository.findByDagIdOrderByTimestampDesc(dagId)
-                                .map(this::mapToDTO);
-                    } else {
-                        // Non-admin users can only see their own logs for the DAG
-                        return getCurrentUsername()
-                                .flatMapMany(username -> 
-                                    dagActionLogRepository.findByDagIdOrderByTimestampDesc(dagId)
-                                            .filter(log -> log.getUsername().equals(username))
-                                            .map(this::mapToDTO)
-                                );
-                    }
-                });
+            .flatMapMany(isAdmin -> {
+                if (isAdmin) {
+                    log.debug("Admin user retrieving logs for DAG: {}", dagId);
+                    return dagActionLogRepository.findByDagIdOrderByTimestampDesc(dagId)
+                        .map(this::mapToDTO)
+                        .doOnComplete(() -> log.info("Completed retrieving logs for DAG: {}", dagId));
+                } else {
+                    return getCurrentUsername()
+                        .flatMapMany(username -> {
+                            log.debug("Non-admin user '{}' retrieving logs for DAG: {}", username, dagId);
+                            return dagActionLogRepository.findByDagIdOrderByTimestampDesc(dagId)
+                                .filter(log -> log.getUsername().equals(username))
+                                .map(this::mapToDTO)
+                                .doOnComplete(() -> log.info("Completed retrieving logs for DAG: {} and user: {}", 
+                                    dagId, username));
+                        });
+                }
+            });
     }
 
     /**
-     * Get logs for a specific action type, filtered by user role
+     * Retrieves logs for a specific action type
+     * 
+     * @param actionType The action type to filter by
+     * @return A Flux of log DTOs
      */
     public Flux<DagActionLogDTO> getLogsByActionType(String actionType) {
+        log.info("Retrieving action logs for action type: {}", actionType);
         return isAdmin()
-                .flatMapMany(isAdmin -> {
-                    if (isAdmin) {
-                        // Admin can see all logs of this type
-                        return dagActionLogRepository.findByActionType(actionType)
-                                .map(this::mapToDTO);
-                    } else {
-                        // Non-admin users can only see their own logs of this type
-                        return getCurrentUsername()
-                                .flatMapMany(username -> 
-                                    dagActionLogRepository.findByActionType(actionType)
-                                            .filter(log -> log.getUsername().equals(username))
-                                            .map(this::mapToDTO)
-                                );
-                    }
-                });
+            .flatMapMany(isAdmin -> {
+                if (isAdmin) {
+                    log.debug("Admin user retrieving logs for action type: {}", actionType);
+                    return dagActionLogRepository.findByActionType(actionType)
+                        .map(this::mapToDTO)
+                        .doOnComplete(() -> log.info("Completed retrieving logs for action type: {}", actionType));
+                } else {
+                    return getCurrentUsername()
+                        .flatMapMany(username -> {
+                            log.debug("Non-admin user '{}' retrieving logs for action type: {}", username, actionType);
+                            return dagActionLogRepository.findByActionType(actionType)
+                                .filter(log -> log.getUsername().equals(username))
+                                .map(this::mapToDTO)
+                                .doOnComplete(() -> log.info("Completed retrieving logs for action type: {} and user: {}", 
+                                    actionType, username));
+                        });
+                }
+            });
     }
 
     /**
-     * Convert entity to DTO
+     * Maps a DagActionLog entity to a DTO
+     * 
+     * @param entity The entity to map
+     * @return The mapped DTO
      */
     private DagActionLogDTO mapToDTO(DagActionLog entity) {
         return DagActionLogDTO.builder()
