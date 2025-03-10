@@ -35,10 +35,10 @@ export interface DagRunClearParams {
 // Service for DagRun operations
 const dagRunService = {
   getDagRuns: (dagId: string, params?: DagRunQueryParams) => 
-    getApiClient().get(`/dags/${dagId}/dagRuns`, { params }),
+    getApiClient().get(`/v1/dags/${dagId}/dagRuns`, { params }),
   
   getDagRun: (dagId: string, dagRunId: string) => 
-    getApiClient().get(`/dags/${dagId}/dagRuns/${dagRunId}`),
+    getApiClient().get(`/v1/dags/${dagId}/dagRuns/${dagRunId}`),
   
   createDagRun: (dagId: string, params: DagRunCreateParams) => {
     // Format date to ISO without milliseconds
@@ -56,26 +56,26 @@ const dagRunService = {
       ...(params.state && { state: params.state })
     };
     
-    return getApiClient().post(`/dags/${dagId}/dagRuns`, payload);
+    return getApiClient().post(`/v1/dags/${dagId}/dagRuns`, payload);
   },
   
   updateDagRunState: (dagId: string, dagRunId: string, state: string) =>
-    getApiClient().patch(`/dags/${dagId}/dagRuns/${dagRunId}`, { state }),
+    getApiClient().patch(`/v1/dags/${dagId}/dagRuns/${dagRunId}`, { state }),
   
   clearDagRun: (dagId: string, dagRunId: string, params: DagRunClearParams = { dry_run: false }) =>
-    getApiClient().post(`/dags/${dagId}/dagRuns/${dagRunId}/clear`, params),
+    getApiClient().post(`/v1/dags/${dagId}/dagRuns/${dagRunId}/clear`, params),
   
   deleteDagRun: (dagId: string, dagRunId: string) =>
-    getApiClient().delete(`/dags/${dagId}/dagRuns/${dagRunId}`),
+    getApiClient().delete(`/v1/dags/${dagId}/dagRuns/${dagRunId}`),
   
   setDagRunNote: (dagId: string, dagRunId: string, note: string) =>
-    getApiClient().patch(`/dags/${dagId}/dagRuns/${dagRunId}/setNote`, { note }),
+    getApiClient().patch(`/v1/dags/${dagId}/dagRuns/${dagRunId}/setNote`, { note }),
   
   retryFailedTasks: (dagId: string, dagRunId: string) =>
-    getApiClient().post(`/dags/${dagId}/dagRuns/${dagRunId}/retryFailed`),
+    getApiClient().post(`/v1/dags/${dagId}/dagRuns/${dagRunId}/retryFailed`),
   
   getDagRunTaskGroups: (dagId: string, dagRunId: string) =>
-    getApiClient().get(`/dags/${dagId}/dagRuns/${dagRunId}/taskGroups`)
+    getApiClient().get(`/v1/dags/${dagId}/dagRuns/${dagRunId}/taskGroups`)
 };
 
 export default dagRunService; 

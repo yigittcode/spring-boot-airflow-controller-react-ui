@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import DagsList from './components/DagsList';
 import DagRuns from './components/DagRuns';
 import TaskInstances from './components/TaskInstances';
+import DagActionLogs from './components/DagActionLogs';
 import Login from './components/Login';
 import { ThemeProvider as MuiThemeProvider, createTheme } from '@mui/material';
 import { isAuthenticated } from './utils/auth';
@@ -38,6 +39,7 @@ function AppContent() {
               <Route path="/" element={<DagsList />} />
               <Route path="/dags/:dagId/runs" element={<DagRuns />} />
               <Route path="/dags/:dagId/runs/:runId/tasks" element={<TaskInstances />} />
+              <Route path="/logs" element={<DagActionLogs />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>

@@ -1,9 +1,10 @@
-import { Box, CssBaseline, AppBar, Toolbar, Typography, Drawer, Button, Stack, IconButton, Tooltip } from '@mui/material';
-import { Logout, Person, Brightness4, Brightness7 } from '@mui/icons-material';
-import { ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Box, CssBaseline, AppBar, Toolbar, Typography, Drawer, Button, Stack, IconButton, Tooltip, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Divider } from '@mui/material';
+import { Logout, Person, Brightness4, Brightness7, Dashboard, Refresh, History, List as ListIcon } from '@mui/icons-material';
+import { ReactNode, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { clearCredentials, getCredentials } from '../utils/auth';
 import { useTheme } from '../contexts/ThemeContext';
+import { resetApiClient } from '../utils/apiClient';
 
 // Constants
 const DRAWER_WIDTH = 240;
@@ -44,14 +45,39 @@ interface LayoutProps {
 
 export default function Layout({ children, onLogout }: LayoutProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const credentials = getCredentials();
   const username = credentials?.username || 'User';
   const { mode, toggleTheme } = useTheme();
+  
+  // Log user information whenever Layout is rendered
+  useEffect(() => {
+    console.log('--- LAYOUT USER INFO ---');
+    console.log('Current user:', credentials?.username);
+    console.log('Has token:', !!credentials?.token);
+    console.log('Current location:', location.pathname);
+    console.log('-------------------------');
+  }, [credentials, location.pathname]);
 
   const handleLogout = () => {
+    console.log('Performing logout operations');
+    
+    // Reset API client first to ensure no more requests go through with old credentials
+    resetApiClient();
+    
+    // Then clear credentials
     clearCredentials();
+    
+    // Finally notify parent component
     onLogout();
+    
+    console.log('Logout completed');
   };
+
+  const menuItems = [
+    { text: 'DAG Listesi', icon: <Dashboard />, path: '/' },
+    { text: 'İşlem Logları', icon: <History />, path: '/logs' }
+  ];
 
   return (
     <Box sx={{ display: 'flex', width: '100vw', height: '100vh' }}>
@@ -105,7 +131,22 @@ export default function Layout({ children, onLogout }: LayoutProps) {
       >
         <Toolbar /> {/* Spacer to push content below app bar */}
         <Box sx={{ overflow: 'auto' }}>
-          {/* Sidebar content goes here */}
+          <List>
+            {menuItems.map((item) => (
+              <ListItem key={item.text} disablePadding>
+                <ListItemButton 
+                  selected={location.pathname === item.path}
+                  onClick={() => navigate(item.path)}
+                >
+                  <ListItemIcon>
+                    {item.icon}
+                  </ListItemIcon>
+                  <ListItemText primary={item.text} />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+          <Divider />
         </Box>
       </Drawer>
       

@@ -2,6 +2,7 @@ package com.yigit.airflow_spring_rest_controller.config;
 
 import com.yigit.airflow_spring_rest_controller.entity.Role;
 import com.yigit.airflow_spring_rest_controller.entity.User;
+import com.yigit.airflow_spring_rest_controller.repository.DagActionLogRepository;
 import com.yigit.airflow_spring_rest_controller.repository.UserRepository;
 import io.r2dbc.spi.ConnectionFactory;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,7 @@ import org.springframework.r2dbc.connection.init.ConnectionFactoryInitializer;
 import org.springframework.r2dbc.connection.init.ResourceDatabasePopulator;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @Configuration
 @RequiredArgsConstructor
@@ -22,13 +24,21 @@ import reactor.core.publisher.Flux;
 public class DatabaseInitializer {
 
     private final UserRepository userRepository;
+    private final DagActionLogRepository dagActionLogRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Bean
     public ConnectionFactoryInitializer initializer(ConnectionFactory connectionFactory) {
         ConnectionFactoryInitializer initializer = new ConnectionFactoryInitializer();
         initializer.setConnectionFactory(connectionFactory);
-        initializer.setDatabasePopulator(new ResourceDatabasePopulator(new ClassPathResource("db/migration/schema.sql")));
+        
+        ResourceDatabasePopulator populator = new ResourceDatabasePopulator(new ClassPathResource("db/migration/schema.sql"));
+        populator.setContinueOnError(false);
+        populator.setSeparator(";");
+        
+        initializer.setDatabasePopulator(populator);
+        
+        log.info("Database initializer configured with schema.sql");
         return initializer;
     }
 
@@ -45,6 +55,20 @@ public class DatabaseInitializer {
                     }
                 })
                 .subscribe();
+
+        // Verify dag_action_logs table exists
+        verifyDagActionLogsTable();
+    }
+
+    private void verifyDagActionLogsTable() {
+        dagActionLogRepository.countAll()
+                .next()
+                .onErrorResume(e -> {
+                    log.error("Error checking dag_action_logs table: {}", e.getMessage());
+                    log.error("Make sure the dag_action_logs table is created properly.");
+                    return Mono.just(0L);
+                })
+                .subscribe(count -> log.info("DAG action logs table exists with {} records", count));
     }
 
     private Flux<User> createDefaultUsers() {

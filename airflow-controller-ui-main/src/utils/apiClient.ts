@@ -15,8 +15,15 @@ const createApiClient = (): AxiosInstance => {
     throw new Error('No credentials available. Please log in again.');
   }
   
+  // Log current user information
+  console.log('--- CURRENT USER INFO ---');
+  console.log('Username:', credentials.username);
+  console.log('Token is present:', !!credentials.token);
+  console.log('Auth Header:', getAuthHeader()?.substring(0, 15) + '...');
+  console.log('------------------------');
+  
   return axios.create({
-    baseURL: `${credentials.serverUrl}/api/v1`,
+    baseURL: `${credentials.serverUrl}/api`,
     headers: {
       'Content-Type': 'application/json',
       'Authorization': getAuthHeader() || ''
@@ -27,11 +34,26 @@ const createApiClient = (): AxiosInstance => {
 // Lazily initialize API client when needed
 let apiClient: AxiosInstance | null = null;
 
+// Store the username that the API client was created for
+let apiClientUser: string | null = null;
+
 // Get or create an API client instance
 export const getApiClient = (): AxiosInstance => {
+  // Force recreation of the API client if active user changes
+  const currentUserCredentials = getCredentials();
+  const currentUser = currentUserCredentials?.username || null;
+  
+  if (apiClient && apiClientUser !== currentUser) {
+    console.log(`User changed from ${apiClientUser} to ${currentUser}, resetting API client`);
+    apiClient = null;
+    apiClientUser = null;
+  }
+  
   if (!apiClient) {
     try {
+      console.log(`Creating new API client for user: ${currentUser}`);
       apiClient = createApiClient();
+      apiClientUser = currentUser;
       setupInterceptors();
     } catch (error) {
       console.error('Failed to create API client:', error);
@@ -71,7 +93,9 @@ const setupInterceptors = () => {
 
 // Reset the API client (useful after login/logout)
 export const resetApiClient = (): void => {
+  console.log('Resetting API client, current user was:', apiClientUser);
   apiClient = null;
+  apiClientUser = null;
 };
 
 // Default export for backward compatibility

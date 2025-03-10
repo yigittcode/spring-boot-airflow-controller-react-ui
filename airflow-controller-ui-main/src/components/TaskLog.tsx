@@ -16,7 +16,7 @@ import {
   Divider
 } from '@mui/material';
 import { Refresh, Download } from '@mui/icons-material';
-import { getLogService } from '../utils/api';
+import { getTaskLogs } from '../services/logService';
 
 // Log color settings for better readability
 const LOG_STYLES = {
@@ -69,8 +69,7 @@ export default function TaskLog({ dagId, dagRunId, taskId, maxTryNumber = 1 }: T
     setError(null);
     
     try {
-      const logService = getLogService();
-      const fetchedLogs = await logService.getTaskLogs(
+      const fetchedLogs = await getTaskLogs(
         finalDagId, 
         finalDagRunId, 
         finalTaskId, 

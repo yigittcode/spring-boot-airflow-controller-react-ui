@@ -34,10 +34,19 @@ import { Edit, Delete, PlayArrow, Pause, BarChart } from '@mui/icons-material';
 import { getDagService } from '../utils/api';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { Dag, PageResponse } from '../types';
+import DagActivityLogs from './DagActivityLogs';
+import { getCredentials } from '../utils/auth';
+import { format, parseISO, isValid } from 'date-fns';
 
 // Constants for styling and configuration
 const TABLE_STYLES = {
   actionCell: { width: 200 }
+};
+
+const STATUS_COLORS = {
+  active: 'success',
+  paused: 'warning',
+  inactive: 'error'
 };
 
 export default function DagsList() {
@@ -58,6 +67,7 @@ export default function DagsList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
   // Fetch DAGs with filtering options
   const fetchDags = async () => {
@@ -112,11 +122,19 @@ export default function DagsList() {
   };
 
   const handleTogglePause = async (dagId: string, currentState: boolean) => {
+    console.log(`--- TOGGLE PAUSE ACTION FOR ${dagId} ---`);
+    console.log('Current user:', getCredentials()?.username);
+    console.log('Current pause state:', currentState);
+    console.log('New pause state:', !currentState);
+    
     try {
       await getDagService().togglePause(dagId, !currentState);
+      console.log('Toggle pause action completed successfully');
       fetchDags(); // Refresh list after toggle
     } catch (err: any) {
       console.error(`Error toggling pause state for DAG ${dagId}:`, err);
+    } finally {
+      console.log('--- END TOGGLE PAUSE ACTION ---');
     }
   };
 
@@ -161,6 +179,49 @@ export default function DagsList() {
     return dag.is_paused ? 
       <Chip label="Paused" color="warning" size="small" /> : 
       <Chip label="Active" color="success" size="small" />;
+  };
+
+  // Helper function to format dates safely
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return "Not specified";
+    
+    try {
+      // First try standard methods
+      const isoDate = new Date(dateString);
+      if (isValid(isoDate) && !isNaN(isoDate.getTime())) {
+        return format(isoDate, 'dd.MM.yyyy HH:mm:ss');
+      }
+      
+      // Try manual parsing
+      // Airflow date format is usually: "2023-11-20T14:30:00+00:00" or similar
+      if (dateString.includes('T') && (dateString.includes('+') || dateString.includes('Z'))) {
+        // Clean ISO format and try again
+        const cleanedDate = dateString.replace(/\.\d+/, ''); // Remove milliseconds
+        const date = new Date(cleanedDate);
+        if (isValid(date) && !isNaN(date.getTime())) {
+          return format(date, 'dd.MM.yyyy HH:mm:ss');
+        }
+      }
+      
+      // Try simple yyyy-MM-dd format
+      if (/^\d{4}-\d{2}-\d{2}/.test(dateString)) {
+        const parts = dateString.split(/[T\s]/)[0].split('-');
+        if (parts.length === 3) {
+          const year = parseInt(parts[0]);
+          const month = parseInt(parts[1]) - 1; // Months in JavaScript are 0-11
+          const day = parseInt(parts[2]);
+          const date = new Date(year, month, day);
+          if (isValid(date) && !isNaN(date.getTime())) {
+            return format(date, 'dd.MM.yyyy');
+          }
+        }
+      }
+      
+      // Last resort: We're showing the original value in the tooltip anyway
+      return "Date could not be formatted";
+    } catch (error) {
+      return "Date could not be formatted";
+    }
   };
 
   return (
@@ -229,8 +290,25 @@ export default function DagsList() {
                     </TableRow>
                   ) : (
                     dags.map((dag) => (
-                      <TableRow key={dag.dag_id}>
-                        <TableCell>{dag.dag_id}</TableCell>
+                      <TableRow
+                        key={dag.dag_id}
+                        hover
+                        onClick={() => setExpandedRow(prev => prev === dag.dag_id ? null : dag.dag_id)}
+                        sx={{
+                          cursor: 'pointer',
+                          backgroundColor: expandedRow === dag.dag_id ? 'action.hover' : 'inherit'
+                        }}
+                      >
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            {dag.dag_id}
+                            {expandedRow === dag.dag_id && (
+                              <Typography variant="caption" color="primary" sx={{ ml: 1 }}>
+                                (Details shown)
+                              </Typography>
+                            )}
+                          </Box>
+                        </TableCell>
                         <TableCell>{getStatusChip(dag)}</TableCell>
                         <TableCell>{dag.description || '-'}</TableCell>
                         <TableCell>{dag.owners?.join(', ') || '-'}</TableCell>
@@ -301,6 +379,147 @@ export default function DagsList() {
           <Button onClick={handleConfirmDelete} color="error">Delete</Button>
         </DialogActions>
       </Dialog>
+
+      {expandedRow && (
+        <Box p={2}>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={8}>
+              <Typography variant="h6" gutterBottom>
+                DAG Details
+              </Typography>
+              <Paper sx={{ p: 2 }}>
+                {dags.filter(dag => dag.dag_id === expandedRow).map(dag => (
+                  <Box key={dag.dag_id} sx={{ my: 1 }}>
+                    <Grid container spacing={2}>
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle2" color="text.secondary">DAG ID:</Typography>
+                      </Grid>
+                      <Grid item xs={8}>
+                        <Typography variant="body2">{dag.dag_id}</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle2" color="text.secondary">Description:</Typography>
+                      </Grid>
+                      <Grid item xs={8}>
+                        <Typography variant="body2">{dag.description || "No description"}</Typography>
+                      </Grid>
+                      
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle2" color="text.secondary">Active:</Typography>
+                      </Grid>
+                      <Grid item xs={8}>
+                        <Chip 
+                          size="small" 
+                          label={dag.is_active ? "Active" : "Inactive"} 
+                          color={dag.is_active ? "success" : "error"}
+                        />
+                      </Grid>
+                      
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle2" color="text.secondary">Status:</Typography>
+                      </Grid>
+                      <Grid item xs={8}>
+                        <Chip 
+                          size="small" 
+                          label={dag.is_paused ? "Paused" : "Running"} 
+                          color={dag.is_paused ? "warning" : "info"}
+                        />
+                      </Grid>
+                      
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle2" color="text.secondary">Owners:</Typography>
+                      </Grid>
+                      <Grid item xs={8}>
+                        <Typography variant="body2">
+                          {dag.owners && dag.owners.length > 0 
+                            ? dag.owners.join(", ") 
+                            : "Not specified"}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle2" color="text.secondary">Schedule:</Typography>
+                      </Grid>
+                      <Grid item xs={8}>
+                        <Typography variant="body2">
+                          {dag.schedule_interval 
+                            ? `${dag.schedule_interval.type || dag.schedule_interval.__type || 'Cron'}: ${dag.schedule_interval.value}` 
+                            : "Not specified"}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle2" color="text.secondary">Tags:</Typography>
+                      </Grid>
+                      <Grid item xs={8}>
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                          {dag.tags && dag.tags.length > 0 
+                            ? dag.tags.map(tag => (
+                                <Chip 
+                                  key={tag.name} 
+                                  label={tag.name} 
+                                  size="small" 
+                                  variant="outlined"
+                                  sx={{ m: 0.25 }}
+                                />
+                              ))
+                            : <Typography variant="body2">No tags</Typography>
+                          }
+                        </Box>
+                      </Grid>
+                      
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle2" color="text.secondary">File Location:</Typography>
+                      </Grid>
+                      <Grid item xs={8}>
+                        <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                          {dag.fileloc || "Not specified"}
+                        </Typography>
+                      </Grid>
+                      
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle2" color="text.secondary">Last Update:</Typography>
+                      </Grid>
+                      <Grid item xs={8}>
+                        <Tooltip 
+                          title={
+                            <Box>
+                              <Typography variant="caption">Original format:</Typography>
+                              <Typography variant="body2">{dag.last_parsed_time}</Typography>
+                            </Box>
+                          }
+                          arrow
+                        >
+                          <Chip
+                            label={formatDate(dag.last_parsed_time)}
+                            size="small"
+                            color="info"
+                            variant="outlined"
+                            sx={{ cursor: 'help' }}
+                          />
+                        </Tooltip>
+                      </Grid>
+                      
+                      <Grid item xs={4}>
+                        <Typography variant="subtitle2" color="text.secondary">Timetable:</Typography>
+                      </Grid>
+                      <Grid item xs={8}>
+                        <Typography variant="body2">
+                          {dag.timetable_description || "Not specified"}
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Box>
+                ))}
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <DagActivityLogs dagId={expandedRow} limit={5} />
+            </Grid>
+          </Grid>
+        </Box>
+      )}
     </Box>
   );
 } 

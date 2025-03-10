@@ -7,8 +7,11 @@ import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunStateUpdate;
 import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunClear;
 import com.yigit.airflow_spring_rest_controller.dto.dagrun.DagRunNoteUpdate;
 import com.yigit.airflow_spring_rest_controller.dto.dataset.DatasetEventCollection;
+import com.yigit.airflow_spring_rest_controller.entity.DagActionLog.ActionType;
 import com.yigit.airflow_spring_rest_controller.exception.AirflowResourceNotFoundException;
+import com.yigit.airflow_spring_rest_controller.exception.AirflowBadRequestException;
 import com.yigit.airflow_spring_rest_controller.exception.AirflowConflictException;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
@@ -20,30 +23,26 @@ import org.springframework.util.MultiValueMap;
 import java.util.Map;
 
 @Service
+@RequiredArgsConstructor
 public class DagRunService {
 
     private final WebClient airflowWebClient;
-
-    @Autowired
-    public DagRunService(WebClient airflowWebClient) {
-        this.airflowWebClient = airflowWebClient;
-    }
+    private final DagActionLogService dagActionLogService;
 
     public Mono<DagRunCollection> getDagRuns(String dagId, Map<String, String> queryParams) {
         return airflowWebClient.get()
             .uri(uriBuilder -> {
-                uriBuilder = uriBuilder.path("/dags/{dagId}/dagRuns");
+                var builder = uriBuilder.path("/dags/{dagId}/dagRuns");
                 
-                // Add query parameters if they exist
                 if (queryParams != null) {
-                    for (Map.Entry<String, String> entry : queryParams.entrySet()) {
-                        if (entry.getValue() != null && !entry.getValue().isEmpty()) {
-                            uriBuilder = uriBuilder.queryParam(entry.getKey(), entry.getValue());
+                    queryParams.forEach((key, value) -> {
+                        if (value != null) {
+                            builder.queryParam(key, value);
                         }
-                    }
+                    });
                 }
                 
-                return uriBuilder.build(dagId);
+                return builder.build(dagId);
             })
             .retrieve()
             .onStatus(
@@ -51,11 +50,6 @@ public class DagRunService {
                 response -> Mono.error(new AirflowResourceNotFoundException("DAG not found: " + dagId))
             )
             .bodyToMono(DagRunCollection.class);
-    }
-    
-    // For backward compatibility
-    public Mono<DagRunCollection> getDagRuns(String dagId) {
-        return getDagRuns(dagId, null);
     }
 
     public Mono<DagRun> createDagRun(String dagId, DagRunCreate dagRunCreate) {
@@ -69,10 +63,24 @@ public class DagRunService {
                 response -> Mono.error(new AirflowResourceNotFoundException("DAG not found: " + dagId))
             )
             .onStatus(
-                status -> status.value() == HttpStatus.CONFLICT.value(),
-                response -> Mono.error(new AirflowConflictException("DAG Run already exists for the specified date"))
+                status -> status.value() == HttpStatus.BAD_REQUEST.value(),
+                response -> Mono.error(new AirflowBadRequestException("Invalid request parameters"))
             )
-            .bodyToMono(DagRun.class);
+            .onStatus(
+                status -> status.value() == HttpStatus.CONFLICT.value(),
+                response -> Mono.error(new AirflowConflictException("DAG Run already exists"))
+            )
+            .bodyToMono(DagRun.class)
+            .flatMap(dagRun -> {
+                String actionDetails = "DAG Run triggered";
+                if (dagRunCreate.getNote() != null && !dagRunCreate.getNote().isEmpty()) {
+                    actionDetails += " with note: " + dagRunCreate.getNote();
+                }
+                
+                return dagActionLogService
+                    .logDagAction(dagId, ActionType.TRIGGERED, actionDetails, true, dagRun.getDagRunId())
+                    .thenReturn(dagRun);
+            });
     }
 
     public Mono<DagRun> getDagRun(String dagId, String dagRunId) {
@@ -81,9 +89,7 @@ public class DagRunService {
             .retrieve()
             .onStatus(
                 status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException(
-                    String.format("DAG Run not found: dagId=%s, dagRunId=%s", dagId, dagRunId)
-                ))
+                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
             )
             .bodyToMono(DagRun.class);
     }
@@ -94,11 +100,22 @@ public class DagRunService {
             .retrieve()
             .onStatus(
                 status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException(
-                    String.format("DAG Run not found: dagId=%s, dagRunId=%s", dagId, dagRunId)
-                ))
+                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
             )
-            .bodyToMono(Void.class);
+            .onStatus(
+                status -> status.value() == HttpStatus.CONFLICT.value(),
+                response -> Mono.error(new AirflowConflictException("DAG Run cannot be deleted in current state"))
+            )
+            .bodyToMono(Void.class)
+            .flatMap(voidReturn -> 
+                dagActionLogService.logDagAction(
+                    dagId, 
+                    ActionType.DELETED, 
+                    "DAG Run deleted: " + dagRunId, 
+                    true, 
+                    dagRunId
+                ).then()
+            );
     }
 
     public Mono<DagRun> updateDagRunState(String dagId, String dagRunId, DagRunStateUpdate stateUpdate) {
@@ -109,15 +126,19 @@ public class DagRunService {
             .retrieve()
             .onStatus(
                 status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException(
-                    String.format("DAG Run not found: dagId=%s, dagRunId=%s", dagId, dagRunId)
-                ))
+                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
             )
             .onStatus(
-                status -> status.value() == HttpStatus.CONFLICT.value(),
-                response -> Mono.error(new AirflowConflictException("Invalid state transition requested"))
+                status -> status.value() == HttpStatus.BAD_REQUEST.value(),
+                response -> Mono.error(new AirflowBadRequestException("Invalid state transition"))
             )
-            .bodyToMono(DagRun.class);
+            .bodyToMono(DagRun.class)
+            .flatMap(dagRun -> {
+                String actionDetails = "DAG Run state changed to: " + stateUpdate.getState();
+                return dagActionLogService
+                    .logDagAction(dagId, ActionType.OTHER, actionDetails, true, dagRunId)
+                    .thenReturn(dagRun);
+            });
     }
 
     public Mono<DagRun> clearDagRun(String dagId, String dagRunId, DagRunClear clearRequest) {
@@ -128,15 +149,18 @@ public class DagRunService {
             .retrieve()
             .onStatus(
                 status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException(
-                    String.format("DAG Run not found: dagId=%s, dagRunId=%s", dagId, dagRunId)
-                ))
+                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
             )
             .onStatus(
                 status -> status.value() == HttpStatus.CONFLICT.value(),
                 response -> Mono.error(new AirflowConflictException("Cannot clear DAG Run in current state"))
             )
-            .bodyToMono(DagRun.class);
+            .bodyToMono(DagRun.class)
+            .flatMap(dagRun -> {
+                return dagActionLogService
+                    .logDagAction(dagId, ActionType.CLEARED, "DAG Run cleared", true, dagRunId)
+                    .thenReturn(dagRun);
+            });
     }
 
     public Mono<DatasetEventCollection> getUpstreamDatasetEvents(String dagId, String dagRunId) {
@@ -145,9 +169,7 @@ public class DagRunService {
             .retrieve()
             .onStatus(
                 status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException(
-                    String.format("DAG Run not found: dagId=%s, dagRunId=%s", dagId, dagRunId)
-                ))
+                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
             )
             .bodyToMono(DatasetEventCollection.class);
     }
@@ -160,10 +182,14 @@ public class DagRunService {
             .retrieve()
             .onStatus(
                 status -> status.value() == HttpStatus.NOT_FOUND.value(),
-                response -> Mono.error(new AirflowResourceNotFoundException(
-                    String.format("DAG Run not found: dagId=%s, dagRunId=%s", dagId, dagRunId)
-                ))
+                response -> Mono.error(new AirflowResourceNotFoundException("DAG Run not found: " + dagId + "/" + dagRunId))
             )
-            .bodyToMono(DagRun.class);
+            .bodyToMono(DagRun.class)
+            .flatMap(dagRun -> {
+                String actionDetails = "Note updated: " + noteUpdate.getNote();
+                return dagActionLogService
+                    .logDagAction(dagId, ActionType.OTHER, actionDetails, true, dagRunId)
+                    .thenReturn(dagRun);
+            });
     }
 } 

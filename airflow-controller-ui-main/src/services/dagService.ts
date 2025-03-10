@@ -14,16 +14,16 @@ export interface DagQueryParams {
 // Service for DAG-related operations
 const dagService = {
   getDags: (params?: DagQueryParams) => 
-    getApiClient().get('/dags', { params }),
+    getApiClient().get('/v1/dags', { params }),
   
   getDag: (dagId: string) => 
-    getApiClient().get(`/dags/${dagId}`),
+    getApiClient().get(`/v1/dags/${dagId}`),
   
   togglePause: (dagId: string, isPaused: boolean) => 
-    getApiClient().patch(`/dags/${dagId}`, { is_paused: isPaused }),
+    getApiClient().patch(`/v1/dags/${dagId}`, { is_paused: isPaused }),
   
   deleteDag: (dagId: string) => 
-    getApiClient().delete(`/dags/${dagId}`)
+    getApiClient().delete(`/v1/dags/${dagId}`)
 };
 
 export default dagService; 

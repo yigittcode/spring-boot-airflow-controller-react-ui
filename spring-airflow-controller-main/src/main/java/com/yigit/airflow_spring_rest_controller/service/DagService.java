@@ -7,9 +7,10 @@ import com.yigit.airflow_spring_rest_controller.dto.dag.DagUpdate;
 import com.yigit.airflow_spring_rest_controller.dto.task.TaskCollection;
 import com.yigit.airflow_spring_rest_controller.dto.task.TaskInstanceCollection;
 import com.yigit.airflow_spring_rest_controller.dto.task.TaskInstanceStateUpdate;
+import com.yigit.airflow_spring_rest_controller.entity.DagActionLog.ActionType;
 import com.yigit.airflow_spring_rest_controller.exception.AirflowResourceNotFoundException;
 import com.yigit.airflow_spring_rest_controller.exception.AirflowConflictException;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -17,14 +18,11 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
 @Service
+@RequiredArgsConstructor
 public class DagService {
 
     private final WebClient airflowWebClient;
-
-    @Autowired
-    public DagService(WebClient airflowWebClient) {
-        this.airflowWebClient = airflowWebClient;
-    }
+    private final DagActionLogService dagActionLogService;
 
     public Mono<DagCollection> getDags() {
         return airflowWebClient.get()
@@ -56,9 +54,22 @@ public class DagService {
             )
             .onStatus(
                 status -> status.value() == HttpStatus.CONFLICT.value(),
-                response -> Mono.error(new AirflowConflictException("Cannot update DAG in current state"))
+                response -> Mono.error(new AirflowConflictException("DAG update conflict"))
             )
-            .bodyToMono(Dag.class);
+            .bodyToMono(Dag.class)
+            .flatMap(dag -> {
+                // Log the DAG action based on what was updated
+                String actionDetails = "DAG updated";
+                ActionType actionType = ActionType.OTHER;
+                
+                if (dagUpdate.getIsPaused() != null) {
+                    actionType = dagUpdate.getIsPaused() ? ActionType.PAUSED : ActionType.UNPAUSED;
+                    actionDetails = dagUpdate.getIsPaused() ? "DAG paused" : "DAG unpaused";
+                }
+                
+                return dagActionLogService.logDagAction(dagId, actionType, actionDetails, true, null)
+                    .thenReturn(dag);
+            });
     }
 
     public Mono<Void> deleteDag(String dagId) {
@@ -71,9 +82,13 @@ public class DagService {
             )
             .onStatus(
                 status -> status.value() == HttpStatus.CONFLICT.value(),
-                response -> Mono.error(new AirflowConflictException("Cannot delete DAG with active runs"))
+                response -> Mono.error(new AirflowConflictException("DAG cannot be deleted"))
             )
-            .bodyToMono(Void.class);
+            .bodyToMono(Void.class)
+            .flatMap(voidReturn -> 
+                dagActionLogService.logDagAction(dagId, ActionType.DELETED, "DAG deleted", true, null)
+                    .then()
+            );
     }
 
     public Mono<TaskCollection> getDagTasks(String dagId) {

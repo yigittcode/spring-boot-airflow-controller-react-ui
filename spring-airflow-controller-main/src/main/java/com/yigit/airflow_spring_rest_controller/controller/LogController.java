@@ -1,43 +1,100 @@
 package com.yigit.airflow_spring_rest_controller.controller;
 
-import com.yigit.airflow_spring_rest_controller.service.LogService;
+import com.yigit.airflow_spring_rest_controller.dto.log.DagActionLogDTO;
+import com.yigit.airflow_spring_rest_controller.dto.log.DagActionLogResponse;
+import com.yigit.airflow_spring_rest_controller.service.DagActionLogService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 @RestController
-@RequestMapping("/api/v1/logs")
-@Tag(name = "Logs", description = "Operations related to task logs")
+@RequestMapping("/api/logs")
+@RequiredArgsConstructor
+@Tag(name = "Logs", description = "Operations for retrieving system logs, including DAG operation logs")
 public class LogController {
 
-    private final LogService logService;
+    private final DagActionLogService dagActionLogService;
 
-    @Autowired
-    public LogController(LogService logService) {
-        this.logService = logService;
+    @Operation(
+        summary = "Get all DAG action logs",
+        description = "Retrieves a paginated list of all DAG action logs in the system."
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "DAG action logs successfully retrieved",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = DagActionLogResponse.class)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "Authentication failed"
+        )
+    })
+    @GetMapping("/dag-actions")
+    public Mono<DagActionLogResponse> getAllDagActionLogs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return dagActionLogService.getAllLogs(page, size);
     }
 
     @Operation(
-        summary = "Get Task Logs",
-        description = "Retrieve logs for a specific task instance"
+        summary = "Get DAG action logs by DAG ID",
+        description = "Retrieves logs of actions performed on a specific DAG"
     )
     @ApiResponses({
-        @ApiResponse(responseCode = "200", description = "Logs retrieved successfully"),
-        @ApiResponse(responseCode = "404", description = "Task instance not found"),
-        @ApiResponse(responseCode = "500", description = "Internal server error")
+        @ApiResponse(
+            responseCode = "200",
+            description = "DAG action logs successfully retrieved",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = DagActionLogDTO.class)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "Authentication failed"
+        )
     })
-    @GetMapping("/{dagId}/dagRuns/{dagRunId}/taskInstances/{taskId}")
-    public Mono<String> getTaskLogs(
-        @Parameter(description = "The DAG ID") @PathVariable String dagId,
-        @Parameter(description = "The DAG run ID") @PathVariable String dagRunId,
-        @Parameter(description = "The task ID") @PathVariable String taskId,
-        @Parameter(description = "The task try number") @RequestParam(required = false, defaultValue = "1") Integer tryNumber
-    ) {
-        return logService.getTaskLogs(dagId, dagRunId, taskId, tryNumber);
+    @GetMapping("/dag-actions/dag/{dagId}")
+    public Flux<DagActionLogDTO> getDagActionLogsByDagId(
+            @Parameter(description = "The ID of the DAG", required = true)
+            @PathVariable String dagId) {
+        return dagActionLogService.getLogsByDagId(dagId);
+    }
+
+    @Operation(
+        summary = "Get DAG action logs by action type",
+        description = "Retrieves logs of actions of a specific type (e.g., PAUSED, TRIGGERED)"
+    )
+    @ApiResponses({
+        @ApiResponse(
+            responseCode = "200",
+            description = "DAG action logs successfully retrieved",
+            content = @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = DagActionLogDTO.class)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "401",
+            description = "Authentication failed"
+        )
+    })
+    @GetMapping("/dag-actions/type/{actionType}")
+    public Flux<DagActionLogDTO> getDagActionLogsByType(
+            @Parameter(description = "The type of the action", required = true)
+            @PathVariable String actionType) {
+        return dagActionLogService.getLogsByActionType(actionType);
     }
 } 

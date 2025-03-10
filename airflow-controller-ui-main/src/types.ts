@@ -9,7 +9,8 @@ export interface Dag {
   owners?: string[];
   root_dag_id?: string;
   schedule_interval?: {
-    type: string;
+    type?: string;
+    __type?: string;
     value: string;
   };
   tags?: {
@@ -109,3 +110,35 @@ export interface FilterConfig<T> {
   options?: {label: string; value: any}[];
   placeholder?: string;
 }
+
+// DAG Action Log Types
+export interface DagActionLog {
+  id: number;
+  username: string;
+  dagId: string;
+  actionType: string;
+  actionDetails: string;
+  timestamp: string;
+  success: boolean;
+  runId?: string;
+}
+
+export interface DagActionLogResponse {
+  logs: DagActionLog[];
+  totalCount: number;
+  page: number;
+  size: number;
+}
+
+// Action type constants
+export const DAG_ACTION_TYPES = {
+  TRIGGERED: 'TRIGGERED',
+  PAUSED: 'PAUSED',
+  UNPAUSED: 'UNPAUSED',
+  DELETED: 'DELETED',
+  CLEARED: 'CLEARED',
+  TASK_STATE_CHANGED: 'TASK_STATE_CHANGED',
+  OTHER: 'OTHER'
+} as const;
+
+export type DagActionType = typeof DAG_ACTION_TYPES[keyof typeof DAG_ACTION_TYPES];
