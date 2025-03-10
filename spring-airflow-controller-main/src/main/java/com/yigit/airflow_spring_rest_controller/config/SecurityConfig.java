@@ -23,6 +23,10 @@ import reactor.core.publisher.Mono;
 import java.util.Arrays;
 import java.util.Collections;
 
+/**
+ * Spring Security configuration for the application.
+ * Implements Apache Airflow style RBAC (Role Based Access Control)
+ */
 @Configuration
 @EnableWebFluxSecurity
 @RequiredArgsConstructor
@@ -44,26 +48,78 @@ public class SecurityConfig {
         return authManager;
     }
 
+    /**
+     * Configures security for the application endpoints based on Airflow roles
+     */
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
         return http
             .csrf(ServerHttpSecurity.CsrfSpec::disable)
             .cors(corsSpec -> corsSpec.configurationSource(corsConfigurationSource()))
             .authorizeExchange(exchanges -> exchanges
-                .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll() // OPTIONS için tüm isteklere izin ver
+                // Public endpoints - no authentication required
+                .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .pathMatchers("/api/auth/**").permitAll()
-                .pathMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                .anyExchange().authenticated()
+                
+                // Swagger UI and API Docs
+                .pathMatchers("/v3/api-docs/**", 
+                             "/swagger-ui/**", 
+                             "/swagger-ui.html",
+                             "/webjars/**",
+                             "/swagger-resources/**").permitAll()
+                
+                // DAG READ access - VIEWER and above (all authenticated users)
+                // These endpoints only return data, cannot modify anything
+                .pathMatchers(HttpMethod.GET, "/api/v1/dags").authenticated()
+                .pathMatchers(HttpMethod.GET, "/api/v1/dags/*/details").authenticated()
+                .pathMatchers(HttpMethod.GET, "/api/v1/dags/*/tasks").authenticated()
+                .pathMatchers(HttpMethod.GET, "/api/v1/dags/*").authenticated()
+                
+                // DAG RUN access - USER and above (can execute but not modify DAGs)
+                // These endpoints allow viewing and triggering DAG runs
+                .pathMatchers(HttpMethod.GET, "/api/v1/dags/*/dagRuns").hasAnyRole("ADMIN", "OP", "USER")
+                .pathMatchers(HttpMethod.POST, "/api/v1/dags/*/dagRuns").hasAnyRole("ADMIN", "OP", "USER")
+                .pathMatchers(HttpMethod.GET, "/api/v1/dags/*/dagRuns/**").hasAnyRole("ADMIN", "OP", "USER")
+                
+                // DAG RUN control actions - USER and above
+                // These endpoints allow controlling existing DAG runs
+                .pathMatchers(HttpMethod.POST, "/api/v1/dags/*/dagRuns/*/clear").hasAnyRole("ADMIN", "OP", "USER")
+                .pathMatchers(HttpMethod.PATCH, "/api/v1/dags/*/dagRuns/*/state").hasAnyRole("ADMIN", "OP", "USER")
+                
+                // DAG WRITE access - OP and ADMIN only
+                // These endpoints allow modifying DAG configurations
+                .pathMatchers(HttpMethod.PATCH, "/api/v1/dags/**").hasAnyRole("ADMIN", "OP")
+                .pathMatchers(HttpMethod.DELETE, "/api/v1/dags/**").hasAnyRole("ADMIN", "OP")
+                
+                // Task instance operations - USER and above
+                .pathMatchers(HttpMethod.GET, "/api/v1/dags/*/dagRuns/*/taskInstances").hasAnyRole("ADMIN", "OP", "USER")
+                .pathMatchers(HttpMethod.PATCH, "/api/v1/dags/*/dagRuns/*/taskInstances/*/state").hasAnyRole("ADMIN", "OP", "USER")
+                
+                // Logs access - All authenticated users can access logs
+                // Service layer will handle filtering based on user permissions
+                .pathMatchers("/api/logs/**").authenticated()
+                
+                // Admin-only operations
+                .pathMatchers("/api/admin/**").hasRole("ADMIN")
+                
+                // Default - Admin access for any unspecified endpoints
+                .anyExchange().hasRole("ADMIN")
             )
             .addFilterAt(jwtAuthenticationFilter, SecurityWebFiltersOrder.AUTHENTICATION)
             .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
             .formLogin(ServerHttpSecurity.FormLoginSpec::disable)
             .logout(ServerHttpSecurity.LogoutSpec::disable)
             .exceptionHandling(exceptionHandlingSpec -> 
-                exceptionHandlingSpec.authenticationEntryPoint((exchange, ex) -> {
-                    exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-                    return Mono.empty();
-                }))
+                exceptionHandlingSpec
+                    .authenticationEntryPoint((exchange, ex) -> {
+                        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+                        return Mono.empty();
+                    })
+                    .accessDeniedHandler((exchange, denied) -> {
+                        exchange.getResponse().setStatusCode(HttpStatus.FORBIDDEN);
+                        return Mono.empty();
+                    })
+            )
             .build();
     }
 

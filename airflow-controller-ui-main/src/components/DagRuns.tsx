@@ -28,10 +28,12 @@ import {
   LinearProgress,
   Tooltip,
 } from '@mui/material';
-import { PlayArrow, Stop, Delete, Refresh, ListAlt, FilterList, SportsScore, Visibility } from '@mui/icons-material';
+import { PlayArrow, Stop, Delete, Refresh, ListAlt, FilterList, SportsScore, Visibility, ArrowBack } from '@mui/icons-material';
 import { getDagRunService } from '../utils/api';
 import { extractErrorMessage, logApiError } from '../utils/errorHandling';
 import BackButton from './common/BackButton';
+import { canRunDags, canModifyDags, getUserRole, formatUserRole } from '../utils/auth';
+import ProtectedComponent from './ProtectedComponent';
 
 interface DagRun {
   dag_run_id: string;
@@ -94,11 +96,20 @@ export default function DagRuns() {
   });
   
   const [showFilters, setShowFilters] = useState(false);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+
+  useEffect(() => {
+    if (!canRunDags()) {
+      setPermissionDenied(true);
+      setError("You don't have permission to view DAG runs. This requires ADMIN, OP, or USER role.");
+    }
+  }, []);
 
   const fetchDagRuns = useCallback(async () => {
-    if (!dagId) return;
+    if (!dagId || permissionDenied) return;
     
     setLoading(true);
+    
     try {
       const dagRunService = getDagRunService();
       const response = await dagRunService.getDagRuns(dagId, {
@@ -112,13 +123,18 @@ export default function DagRuns() {
       setDagRuns(runs);
       setError(null);
     } catch (error: any) {
-      const errorMessage = extractErrorMessage(error);
-      setError(`Error fetching DAG runs: ${errorMessage}`);
+      if (error.response && error.response.status === 403) {
+        setPermissionDenied(true);
+        setError("You don't have permission to view this DAG's runs. This feature requires ADMIN, OP, or USER role.");
+      } else {
+        const errorMessage = extractErrorMessage(error);
+        setError(`Error fetching DAG runs: ${errorMessage}`);
+      }
       logApiError(error, 'Fetch DAG Runs');
     } finally {
       setLoading(false);
     }
-  }, [dagId, filters.state]);
+  }, [dagId, filters.state, permissionDenied]);
   
   useEffect(() => {
     fetchDagRuns();
@@ -156,7 +172,11 @@ export default function DagRuns() {
   };
 
   const handleCreateRun = async () => {
-    if (!dagId) return;
+    if (!dagId || !canRunDags()) {
+      setError("You don't have permission to trigger DAG runs.");
+      return;
+    }
+    
     try {
       const startDate = newRunConfig.start_date 
         ? new Date(newRunConfig.start_date) 
@@ -200,7 +220,11 @@ export default function DagRuns() {
   };
 
   const handleDeleteRun = async (runId: string) => {
-    if (!dagId) return;
+    if (!dagId || !canRunDags()) {
+      setError("You don't have permission to delete DAG runs.");
+      return;
+    }
+    
     try {
       const dagRunService = getDagRunService();
       await dagRunService.deleteDagRun(dagId, runId);
@@ -213,7 +237,11 @@ export default function DagRuns() {
   };
 
   const handleClearRun = async (runId: string) => {
-    if (!dagId) return;
+    if (!dagId || !canRunDags()) {
+      setError("You don't have permission to clear DAG runs.");
+      return;
+    }
+    
     setLoading(true);
     try {
       const dagRunService = getDagRunService();
@@ -230,7 +258,11 @@ export default function DagRuns() {
   };
 
   const handleStopRun = async (runId: string) => {
-    if (!dagId) return;
+    if (!dagId || !canRunDags()) {
+      setError("You don't have permission to stop DAG runs.");
+      return;
+    }
+    
     try {
       const dagRunService = getDagRunService();
       await dagRunService.updateDagRunState(dagId, runId, 'failed');
@@ -390,29 +422,31 @@ export default function DagRuns() {
                   >
                     <ListAlt />
                   </IconButton>
-                  {run.state === 'running' && (
+                  <ProtectedComponent allowedRoles={['ADMIN', 'OP', 'USER']}>
+                    {run.state === 'running' && (
+                      <IconButton
+                        size="small"
+                        onClick={() => handleStopRun(run.dag_run_id)}
+                        title="Stop Run"
+                      >
+                        <Stop />
+                      </IconButton>
+                    )}
                     <IconButton
                       size="small"
-                      onClick={() => handleStopRun(run.dag_run_id)}
-                      title="Stop Run"
+                      onClick={() => handleClearRun(run.dag_run_id)}
+                      title="Clear Run"
                     >
-                      <Stop />
+                      <SportsScore />
                     </IconButton>
-                  )}
-                  <IconButton
-                    size="small"
-                    onClick={() => handleClearRun(run.dag_run_id)}
-                    title="Clear Run"
-                  >
-                    <SportsScore />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDeleteRun(run.dag_run_id)}
-                    title="Delete Run"
-                  >
-                    <Delete />
-                  </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDeleteRun(run.dag_run_id)}
+                      title="Delete Run"
+                    >
+                      <Delete />
+                    </IconButton>
+                  </ProtectedComponent>
                 </TableCell>
               </TableRow>
             ))}
@@ -421,6 +455,42 @@ export default function DagRuns() {
       </TableContainer>
     );
   };
+
+  if (permissionDenied) {
+    return (
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+          <BackButton to="/" />
+          <Typography variant="h5">Access Denied - DAG Runs</Typography>
+        </Box>
+        
+        <Paper sx={{ p: 3, mt: 2 }}>
+          <Alert 
+            severity="error" 
+            sx={{ mb: 2 }}
+            action={
+              <Button 
+                color="inherit" 
+                size="small" 
+                onClick={() => navigate('/')}
+                startIcon={<ArrowBack />}
+              >
+                Return to DAGs List
+              </Button>
+            }
+          >
+            <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 1 }}>
+              Permission Denied
+            </Typography>
+            <Typography variant="body2">
+              Your current role ({formatUserRole(getUserRole())}) doesn't have permission to view DAG runs.
+              This feature requires ADMIN, OP, or USER role based on Apache Airflow RBAC rules.
+            </Typography>
+          </Alert>
+        </Paper>
+      </Box>
+    );
+  }
 
   if (!dagId) {
     return <Typography>No DAG ID provided</Typography>;
@@ -450,15 +520,17 @@ export default function DagRuns() {
           >
             Refresh
           </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<PlayArrow />}
-            onClick={() => setOpenNewRun(true)}
-            disabled={loading}
-          >
-            Trigger DAG
-          </Button>
+          <ProtectedComponent allowedRoles={['ADMIN', 'OP', 'USER']}>
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<PlayArrow />}
+              onClick={() => setOpenNewRun(true)}
+              disabled={loading}
+            >
+              Trigger DAG
+            </Button>
+          </ProtectedComponent>
         </Box>
       </Box>
 

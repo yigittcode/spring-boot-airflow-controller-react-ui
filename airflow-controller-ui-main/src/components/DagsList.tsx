@@ -35,8 +35,9 @@ import { getDagService } from '../utils/api';
 import { SelectChangeEvent } from '@mui/material/Select';
 import { Dag, PageResponse } from '../types';
 import DagActivityLogs from './DagActivityLogs';
-import { getCredentials } from '../utils/auth';
+import { getCredentials, canRunDags, canModifyDags, canViewDags, hasPermission, formatUserRole } from '../utils/auth';
 import { format, parseISO, isValid } from 'date-fns';
+import ProtectedComponent from './ProtectedComponent';
 
 // Constants for styling and configuration
 const TABLE_STYLES = {
@@ -122,6 +123,13 @@ export default function DagsList() {
   };
 
   const handleTogglePause = async (dagId: string, currentState: boolean) => {
+    // Only OP and ADMIN can pause/unpause DAGs
+    if (!canModifyDags()) {
+      setError("You don't have permission to pause/unpause DAGs. This requires ADMIN or OP role.");
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
+    
     console.log(`--- TOGGLE PAUSE ACTION FOR ${dagId} ---`);
     console.log('Current user:', getCredentials()?.username);
     console.log('Current pause state:', currentState);
@@ -133,12 +141,21 @@ export default function DagsList() {
       fetchDags(); // Refresh list after toggle
     } catch (err: any) {
       console.error(`Error toggling pause state for DAG ${dagId}:`, err);
+      setError(`Failed to ${currentState ? 'unpause' : 'pause'} DAG: ${err.message || 'Unknown error'}`);
+      setTimeout(() => setError(null), 5000);
     } finally {
       console.log('--- END TOGGLE PAUSE ACTION ---');
     }
   };
 
   const handleDeleteClick = (dagId: string) => {
+    // Only OP and ADMIN can delete DAGs
+    if (!canModifyDags()) {
+      setError("You don't have permission to delete DAGs. This requires ADMIN or OP role.");
+      setTimeout(() => setError(null), 5000);
+      return;
+    }
+    
     setDagToDelete(dagId);
     setDeleteConfirmOpen(true);
   };
@@ -163,7 +180,13 @@ export default function DagsList() {
   };
 
   const handleViewRuns = (dagId: string) => {
-    navigate(`/dags/${dagId}/runs`);
+    // Only USER, OP and ADMIN can view and manage DAG runs
+    if (canRunDags()) {
+      navigate(`/dags/${dagId}/runs`);
+    } else {
+      setError("You don't have permission to view DAG runs. This requires ADMIN, OP, or USER role.");
+      setTimeout(() => setError(null), 5000);
+    }
   };
 
   // Load DAGs when dependencies change
@@ -313,35 +336,76 @@ export default function DagsList() {
                         <TableCell>{dag.description || '-'}</TableCell>
                         <TableCell>{dag.owners?.join(', ') || '-'}</TableCell>
                         <TableCell align="center" sx={TABLE_STYLES.actionCell}>
-                          <Stack direction="row" spacing={1} justifyContent="center">
-                            <Tooltip title="View DAG Runs">
-                              <IconButton 
-                                size="small" 
-                                onClick={() => handleViewRuns(dag.dag_id)}
-                              >
-                                <BarChart />
-                              </IconButton>
+                          <Stack direction="row" spacing={1} justifyContent="flex-end">
+                            {/* Pause/Resume button - Only for ADMIN and OP roles */}
+                            <ProtectedComponent 
+                              allowedRoles={['ADMIN', 'OP']}
+                              fallback={
+                                <Tooltip title="You need ADMIN or OP role to pause/unpause DAGs">
+                                  <span>
+                                    <IconButton 
+                                      size="small"
+                                      color="default"
+                                      disabled={true}
+                                    >
+                                      {dag.is_paused ? <PlayArrow /> : <Pause />}
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              }
+                            >
+                              <Tooltip title={dag.is_paused ? 'Resume DAG' : 'Pause DAG'}>
+                                <IconButton 
+                                  onClick={() => handleTogglePause(dag.dag_id, dag.is_paused)} 
+                                  size="small"
+                                  color={dag.is_paused ? 'warning' : 'primary'}
+                                >
+                                  {dag.is_paused ? <PlayArrow /> : <Pause />}
+                                </IconButton>
+                              </Tooltip>
+                            </ProtectedComponent>
+                            
+                            {/* View DAG Runs button - Show tooltip based on role */}
+                            <Tooltip title={canRunDags() ? "View DAG Runs" : "You need ADMIN, OP, or USER role to view runs"}>
+                              <span>
+                                <IconButton
+                                  onClick={() => handleViewRuns(dag.dag_id)} 
+                                  size="small"
+                                  color="primary"
+                                  disabled={!canRunDags()}
+                                >
+                                  <BarChart />
+                                </IconButton>
+                              </span>
                             </Tooltip>
                             
-                            <Tooltip title={dag.is_paused ? "Unpause DAG" : "Pause DAG"}>
-                              <IconButton 
-                                size="small" 
-                                onClick={() => handleTogglePause(dag.dag_id, dag.is_paused)}
-                                color={dag.is_paused ? "warning" : "default"}
-                              >
-                                {dag.is_paused ? <PlayArrow /> : <Pause />}
-                              </IconButton>
-                            </Tooltip>
-                            
-                            <Tooltip title="Delete DAG">
-                              <IconButton 
-                                size="small" 
-                                onClick={() => handleDeleteClick(dag.dag_id)}
-                                color="error"
-                              >
-                                <Delete />
-                              </IconButton>
-                            </Tooltip>
+                            {/* Delete DAG button - Only for ADMIN and OP roles */}
+                            <ProtectedComponent 
+                              allowedRoles={['ADMIN', 'OP']}
+                              fallback={
+                                <Tooltip title="You need ADMIN or OP role to delete DAGs">
+                                  <span>
+                                    <IconButton 
+                                      size="small"
+                                      color="default"
+                                      disabled={true}
+                                    >
+                                      <Delete />
+                                    </IconButton>
+                                  </span>
+                                </Tooltip>
+                              }
+                            >
+                              <Tooltip title="Delete DAG">
+                                <IconButton
+                                  onClick={() => handleDeleteClick(dag.dag_id)} 
+                                  size="small"
+                                  color="error"
+                                >
+                                  <Delete />
+                                </IconButton>
+                              </Tooltip>
+                            </ProtectedComponent>
                           </Stack>
                         </TableCell>
                       </TableRow>

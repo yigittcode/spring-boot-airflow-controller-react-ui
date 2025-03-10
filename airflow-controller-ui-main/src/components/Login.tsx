@@ -99,14 +99,16 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       // If we reach here, authentication was successful
       console.log('Login successful for user:', credentials.username);
       console.log('Token received:', !!response.data.token);
+      console.log('User role:', response.data.role);
       
       // First clear any existing API client to ensure we start fresh
       resetApiClient();
       
-      // Store credentials and JWT token in local storage
+      // Store credentials, JWT token and role in local storage
       const authData = {
         ...credentials,
-        token: response.data.token
+        token: response.data.token,
+        role: response.data.role
       };
       saveCredentials(authData);
       onLoginSuccess();

@@ -4,9 +4,11 @@ import com.yigit.airflow_spring_rest_controller.dto.log.DagActionLogDTO;
 import com.yigit.airflow_spring_rest_controller.dto.log.DagActionLogResponse;
 import com.yigit.airflow_spring_rest_controller.entity.DagActionLog;
 import com.yigit.airflow_spring_rest_controller.entity.DagActionLog.ActionType;
+import com.yigit.airflow_spring_rest_controller.entity.Role;
 import com.yigit.airflow_spring_rest_controller.repository.DagActionLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.stereotype.Service;
@@ -109,35 +111,107 @@ public class DagActionLogService {
     }
 
     /**
-     * Get all logs with pagination
+     * Helper method to check if the current user is an admin
+     */
+    private Mono<Boolean> isAdmin() {
+        return ReactiveSecurityContextHolder.getContext()
+                .map(SecurityContext::getAuthentication)
+                .map(auth -> auth.getAuthorities().contains(new SimpleGrantedAuthority("ROLE_ADMIN")));
+    }
+    
+    /**
+     * Helper method to get the current username
+     */
+    private Mono<String> getCurrentUsername() {
+        return ReactiveSecurityContextHolder.getContext()
+                .map(SecurityContext::getAuthentication)
+                .map(Authentication::getName);
+    }
+
+    /**
+     * Get all logs with pagination, filtered by user role
      */
     public Mono<DagActionLogResponse> getAllLogs(int page, int size) {
         int offset = page * size;
         
-        return dagActionLogRepository.countAll()
-                .next()
-                .flatMap(total -> 
-                    dagActionLogRepository.findAllWithPagination(size, offset)
-                            .map(this::mapToDTO)
-                            .collectList()
-                            .map(logs -> new DagActionLogResponse(logs, total, page, size))
-                );
+        return isAdmin()
+                .flatMap(isAdmin -> {
+                    if (isAdmin) {
+                        // Admin can see all logs
+                        return dagActionLogRepository.countAll()
+                                .next()
+                                .flatMap(total -> 
+                                    dagActionLogRepository.findAllWithPagination(size, offset)
+                                            .map(this::mapToDTO)
+                                            .collectList()
+                                            .map(logs -> new DagActionLogResponse(logs, total, page, size))
+                                );
+                    } else {
+                        // Non-admin users can only see their own logs
+                        return getCurrentUsername()
+                                .flatMap(username -> 
+                                    dagActionLogRepository.findByUsername(username)
+                                            .map(this::mapToDTO)
+                                            .collectList()
+                                            .map(logs -> {
+                                                int total = logs.size();
+                                                int fromIndex = offset;
+                                                int toIndex = Math.min(fromIndex + size, total);
+                                                
+                                                return new DagActionLogResponse(
+                                                    fromIndex < total ? logs.subList(fromIndex, toIndex) : java.util.Collections.emptyList(),
+                                                    (long) total,
+                                                    page,
+                                                    size
+                                                );
+                                            })
+                                );
+                    }
+                });
     }
 
     /**
-     * Get logs for a specific DAG
+     * Get logs for a specific DAG, filtered by user role
      */
     public Flux<DagActionLogDTO> getLogsByDagId(String dagId) {
-        return dagActionLogRepository.findByDagIdOrderByTimestampDesc(dagId)
-                .map(this::mapToDTO);
+        return isAdmin()
+                .flatMapMany(isAdmin -> {
+                    if (isAdmin) {
+                        // Admin can see all logs for the DAG
+                        return dagActionLogRepository.findByDagIdOrderByTimestampDesc(dagId)
+                                .map(this::mapToDTO);
+                    } else {
+                        // Non-admin users can only see their own logs for the DAG
+                        return getCurrentUsername()
+                                .flatMapMany(username -> 
+                                    dagActionLogRepository.findByDagIdOrderByTimestampDesc(dagId)
+                                            .filter(log -> log.getUsername().equals(username))
+                                            .map(this::mapToDTO)
+                                );
+                    }
+                });
     }
 
     /**
-     * Get logs for a specific action type
+     * Get logs for a specific action type, filtered by user role
      */
     public Flux<DagActionLogDTO> getLogsByActionType(String actionType) {
-        return dagActionLogRepository.findByActionType(actionType)
-                .map(this::mapToDTO);
+        return isAdmin()
+                .flatMapMany(isAdmin -> {
+                    if (isAdmin) {
+                        // Admin can see all logs of this type
+                        return dagActionLogRepository.findByActionType(actionType)
+                                .map(this::mapToDTO);
+                    } else {
+                        // Non-admin users can only see their own logs of this type
+                        return getCurrentUsername()
+                                .flatMapMany(username -> 
+                                    dagActionLogRepository.findByActionType(actionType)
+                                            .filter(log -> log.getUsername().equals(username))
+                                            .map(this::mapToDTO)
+                                );
+                    }
+                });
     }
 
     /**

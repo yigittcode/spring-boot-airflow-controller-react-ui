@@ -7,6 +7,7 @@ export interface AuthCredentials {
   password: string;
   serverUrl: string;
   token?: string;
+  role?: string;
 }
 
 export const saveCredentials = (credentials: AuthCredentials): void => {
@@ -84,4 +85,103 @@ export const getAuthHeader = (): string | null => {
 export const getServerUrl = (): string => {
   const credentials = getCredentials();
   return credentials?.serverUrl || 'http://localhost:8008';
+};
+
+/**
+ * Get the role of the current user
+ */
+export const getUserRole = (): string | null => {
+  const credentials = getCredentials();
+  return credentials?.role || null;
+};
+
+/**
+ * Check if the current user has any of the specified roles
+ */
+export const hasAnyRole = (roles: string[]): boolean => {
+  const userRole = getUserRole();
+  return userRole !== null && roles.includes(userRole);
+};
+
+/**
+ * Role hierarchy structure based on Apache Airflow RBAC
+ * Each role inherits permissions from roles below it
+ */
+const ROLE_HIERARCHY = {
+  'ADMIN': ['ADMIN', 'OP', 'USER', 'VIEWER', 'PUBLIC'],
+  'OP': ['OP', 'USER', 'VIEWER', 'PUBLIC'],
+  'USER': ['USER', 'VIEWER', 'PUBLIC'],
+  'VIEWER': ['VIEWER', 'PUBLIC'],
+  'PUBLIC': ['PUBLIC']
+};
+
+/**
+ * Check if user has a role that has the specified permission
+ * Takes into account the role hierarchy
+ */
+export const hasPermission = (requiredRole: string): boolean => {
+  const userRole = getUserRole();
+  if (!userRole) return false;
+  
+  // Get all roles that the user effectively has based on hierarchy
+  const effectiveRoles = ROLE_HIERARCHY[userRole] || [];
+  return effectiveRoles.includes(requiredRole);
+};
+
+/**
+ * Check if the current user is an admin
+ */
+export const isAdmin = (): boolean => {
+  return getUserRole() === 'ADMIN';
+};
+
+/**
+ * Check if the current user can modify DAGs (ADMIN or OP)
+ */
+export const canModifyDags = (): boolean => {
+  return hasPermission('OP');
+};
+
+/**
+ * Check if the current user can run DAGs (ADMIN, OP, or USER)
+ */
+export const canRunDags = (): boolean => {
+  return hasPermission('USER');
+};
+
+/**
+ * Check if the current user can view DAGs (all authenticated users)
+ */
+export const canViewDags = (): boolean => {
+  return hasPermission('VIEWER');
+};
+
+/**
+ * Check if user can control task instances (ADMIN, OP, or USER)
+ */
+export const canControlTasks = (): boolean => {
+  return hasPermission('USER');
+};
+
+/**
+ * Format user role for display
+ */
+export const formatUserRole = (role: string | null | undefined): string => {
+  if (!role) return 'Unknown';
+  
+  // Capitalize role and add description
+  switch (role) {
+    case 'ADMIN':
+      return 'Admin (Full Access)';
+    case 'OP':
+      return 'Operator (DAG Manager)';
+    case 'USER':
+      return 'User (DAG Runner)';
+    case 'VIEWER':
+      return 'Viewer (Read Only)';
+    case 'PUBLIC':
+      return 'Public (Limited)';
+    default:
+      return role;
+  }
 }; 

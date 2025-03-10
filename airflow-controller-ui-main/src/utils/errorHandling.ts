@@ -17,51 +17,60 @@ export interface ApiErrorResponse {
 }
 
 /**
- * Extracts a human-readable error message from various API error response formats
- * @param error The error object from an API call
- * @returns A user-friendly error message string
+ * Extracts a user-friendly error message from API errors
  */
 export const extractErrorMessage = (error: any): string => {
-  // Handle axios error response with our API error structure
-  if (error.response?.data) {
-    const data = error.response.data;
-    
-    // Handle structured error format
-    if (data.error?.detail) {
-      return data.error.detail;
-    }
-    
-    // Handle simple detail field
-    if (data.detail) {
-      return data.detail;
-    }
-    
-    // Handle message field
-    if (data.message) {
-      return data.message;
+  // If it's an axios error response
+  if (error.response) {
+    // Check for specific status codes and provide meaningful messages
+    switch (error.response.status) {
+      case 401:
+        return 'Authentication failed. Please log in again.';
+      case 403:
+        return 'You do not have permission to perform this action.';
+      case 404:
+        return 'The requested resource was not found.';
+      case 500:
+        return 'Server error occurred. Please try again later.';
+      default:
+        // Try to extract error message from response body
+        if (error.response.data) {
+          if (typeof error.response.data === 'string') {
+            return error.response.data;
+          }
+          if (error.response.data.message) {
+            return error.response.data.message;
+          }
+          if (error.response.data.error) {
+            return error.response.data.error;
+          }
+        }
+        return `Error ${error.response.status}: ${error.response.statusText || 'Unknown error'}`;
     }
   }
   
-  // Handle direct error message
-  if (error.message) {
-    return error.message;
+  // Network errors
+  if (error.request && !error.response) {
+    return 'Network error. Please check your connection.';
   }
   
-  // Default fallback
-  return 'An unexpected error occurred';
+  // Other errors
+  return error.message || 'An unknown error occurred';
 };
 
 /**
- * Logs API errors to console with consistent formatting
- * @param error The error object to log
- * @param context Optional context information (e.g., the operation that failed)
+ * Logs API errors to console with context
  */
-export const logApiError = (error: any, context?: string): void => {
-  const contextPrefix = context ? `[${context}] ` : '';
+export const logApiError = (error: any, context: string = 'API Request'): void => {
+  console.error(`[${context}] API Error:`, error.response?.data?.message || error.message || 'Unknown error');
   
-  if (error.response?.data) {
-    console.error(`${contextPrefix}API Error:`, error.response.data);
-  } else {
-    console.error(`${contextPrefix}Error:`, error);
+  // Additional detailed logging
+  if (error.response) {
+    console.error(`Status: ${error.response.status} ${error.response.statusText}`);
+    if (error.response.data) {
+      console.error('Error details:', error.response.data);
+    }
+  } else if (error.request) {
+    console.error('No response received:', error.request);
   }
 }; 

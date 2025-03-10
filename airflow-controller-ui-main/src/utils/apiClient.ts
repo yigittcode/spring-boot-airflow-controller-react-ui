@@ -85,6 +85,20 @@ const setupInterceptors = () => {
         window.location.href = '/';
       }
       
+      // For 403 Forbidden errors, add user-friendly messaging
+      if (error.response && error.response.status === 403) {
+        console.warn('Access denied to resource. The user lacks necessary permissions.');
+        // Get current role for better debugging
+        const creds = getCredentials();
+        if (creds) {
+          console.log(`Current user role: ${creds.role || 'Unknown'}`);
+        }
+        
+        // We add custom info to the error object for our components to use
+        error.isPermissionError = true;
+        error.permissionMessage = "You don't have sufficient permissions to access this resource.";
+      }
+      
       return Promise.reject(error);
     }
   );
