@@ -13,7 +13,7 @@ import {
   InputAdornment,
   IconButton
 } from '@mui/material';
-import { saveCredentials, AuthCredentials, resetToken } from '../utils/auth';
+import { saveCredentials, AuthCredentials } from '../utils/auth';
 import { resetApiClient } from '../utils/apiClient';
 import axios from 'axios';
 import PersonIcon from '@mui/icons-material/Person';
@@ -84,8 +84,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
         password: credentials.password
       };
       
-      console.log('Login attempt for user:', credentials.username);
-      
       // Send login request to backend
       const response = await axios.post(
         `${credentials.serverUrl}${API.FULL_PREFIX}/auth/login`,
@@ -98,9 +96,6 @@ export default function Login({ onLoginSuccess }: LoginProps) {
       );
 
       // If we reach here, authentication was successful
-      console.log('Login successful for user:', credentials.username);
-      console.log('Token received:', !!response.data.token);
-      console.log('User role:', response.data.role);
       
       // First clear any existing API client to ensure we start fresh
       resetApiClient();

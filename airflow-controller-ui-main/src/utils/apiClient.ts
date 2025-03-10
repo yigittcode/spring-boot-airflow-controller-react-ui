@@ -1,7 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { logApiError } from './errorHandling';
 import { getAuthHeader, getCredentials, isAuthenticated } from './auth';
-import { API_PREFIX } from '../config/api.config';
 
 // Create an axios instance with default configuration
 const createApiClient = (): AxiosInstance => {
@@ -15,13 +14,6 @@ const createApiClient = (): AxiosInstance => {
   if (!credentials) {
     throw new Error('No credentials available. Please log in again.');
   }
-  
-  // Log current user information
-  console.log('--- CURRENT USER INFO ---');
-  console.log('Username:', credentials.username);
-  console.log('Token is present:', !!credentials.token);
-  console.log('Auth Header:', getAuthHeader()?.substring(0, 15) + '...');
-  console.log('------------------------');
   
   return axios.create({
     baseURL: `${credentials.serverUrl}/api`,
@@ -45,19 +37,16 @@ export const getApiClient = (): AxiosInstance => {
   const currentUser = currentUserCredentials?.username || null;
   
   if (apiClient && apiClientUser !== currentUser) {
-    console.log(`User changed from ${apiClientUser} to ${currentUser}, resetting API client`);
     apiClient = null;
     apiClientUser = null;
   }
   
   if (!apiClient) {
     try {
-      console.log(`Creating new API client for user: ${currentUser}`);
       apiClient = createApiClient();
       apiClientUser = currentUser;
       setupInterceptors();
     } catch (error) {
-      console.error('Failed to create API client:', error);
       // If we are not on the login page, redirect the user to the login page
       if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
         window.location.href = '/';
@@ -82,18 +71,13 @@ const setupInterceptors = () => {
       
       // In case of 401 Unauthorized error, terminate the session and redirect to the login page
       if (error.response && error.response.status === 401) {
-        console.warn('Unauthorized request detected. Redirecting to login...');
         window.location.href = '/';
       }
       
       // For 403 Forbidden errors, add user-friendly messaging
       if (error.response && error.response.status === 403) {
-        console.warn('Access denied to resource. The user lacks necessary permissions.');
         // Get current role for better debugging
         const creds = getCredentials();
-        if (creds) {
-          console.log(`Current user role: ${creds.role || 'Unknown'}`);
-        }
         
         // We add custom info to the error object for our components to use
         error.isPermissionError = true;
@@ -108,7 +92,6 @@ const setupInterceptors = () => {
 
 // Reset the API client (useful after login/logout)
 export const resetApiClient = (): void => {
-  console.log('Resetting API client, current user was:', apiClientUser);
   apiClient = null;
   apiClientUser = null;
 };

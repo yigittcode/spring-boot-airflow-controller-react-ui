@@ -149,8 +149,9 @@ export default function DagActionLogs() {
         return 'Invalid Date';
       }
       
-      return format(date, 'dd.MM.yyyy HH:mm:ss');
+      return format(date, 'MM/dd/yyyy HH:mm:ss');
     } catch (error) {
+      console.error("Error formatting date:", error);
       return 'Invalid Date';
     }
   };
@@ -278,9 +279,11 @@ export default function DagActionLogs() {
                     </TableCell>
                     <TableCell>
                       {log.runId ? (
-                        <Link to={`/dags/${log.dagId}/runs/${log.runId}`} style={{ textDecoration: 'none' }}>
-                          {log.runId.length > 10 ? `${log.runId.substring(0, 10)}...` : log.runId}
-                        </Link>
+                        <Tooltip title={log.runId} arrow placement="top">
+                          <Link to={`/dags/${log.dagId}/runs/${log.runId}`} style={{ textDecoration: 'none' }}>
+                            {log.runId.length > 15 ? `${log.runId.substring(0, 15)}...` : log.runId}
+                          </Link>
+                        </Tooltip>
                       ) : (
                         '-'
                       )}

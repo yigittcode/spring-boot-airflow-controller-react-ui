@@ -79,8 +79,8 @@ export default function Layout({ children, onLogout }: LayoutProps) {
   };
 
   const menuItems = [
-    { text: 'DAG Listesi', icon: <Dashboard />, path: '/' },
-    { text: 'İşlem Logları', icon: <History />, path: '/logs' }
+    { text: 'DAG List', icon: <Dashboard />, path: '/' },
+    { text: 'Activity Logs', icon: <History />, path: '/logs' }
   ];
 
   // Get appropriate color for role chip

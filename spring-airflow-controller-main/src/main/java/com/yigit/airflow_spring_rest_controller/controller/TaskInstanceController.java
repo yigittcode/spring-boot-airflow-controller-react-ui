@@ -26,7 +26,6 @@ public class TaskInstanceController {
 
     private final TaskInstanceService taskInstanceService;
 
-    @Autowired
     public TaskInstanceController(TaskInstanceService taskInstanceService) {
         this.taskInstanceService = taskInstanceService;
     }

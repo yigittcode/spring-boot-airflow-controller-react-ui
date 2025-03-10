@@ -13,7 +13,8 @@ import {
   Alert,
   IconButton,
   Tooltip,
-  LinearProgress
+  LinearProgress,
+  Stack
 } from '@mui/material';
 import { formatDistanceToNow, parseISO, isValid } from 'date-fns';
 import { format } from 'date-fns';
@@ -26,6 +27,7 @@ import BuildIcon from '@mui/icons-material/Build';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import { DagActionLog, DAG_ACTION_TYPES } from '../types';
 import { getDagActionLogsByDagId } from '../services/logService';
+import { Link as RouterLink } from 'react-router-dom';
 
 interface DagActivityLogsProps {
   dagId: string;
@@ -106,7 +108,7 @@ export default function DagActivityLogs({ dagId, limit = 10 }: DagActivityLogsPr
         return 'Invalid Date';
       }
       
-      return format(date, 'dd.MM.yyyy HH:mm:ss');
+      return format(date, 'MM/dd/yyyy HH:mm:ss');
     } catch (error) {
       console.error("Error formatting date:", error);
       return 'Invalid Date';
@@ -169,17 +171,44 @@ export default function DagActivityLogs({ dagId, limit = 10 }: DagActivityLogsPr
                         variant="outlined" 
                         sx={{ fontSize: '0.7rem' }}
                       />
+                      {log.dagId && log.dagId !== dagId && (
+                        <Tooltip title={`Go to DAG: ${log.dagId}`}>
+                          <Chip
+                            label={log.dagId}
+                            size="small"
+                            color="primary"
+                            component={RouterLink}
+                            to={`/dags/${log.dagId}?details=true`}
+                            clickable
+                            sx={{ fontSize: '0.7rem' }}
+                          />
+                        </Tooltip>
+                      )}
                     </Box>
                   }
+                  secondaryTypographyProps={{ component: 'div' }}
                   secondary={
-                    <>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
                       <Typography variant="body2" component="span" color="text.primary">
                         {log.actionDetails}
                       </Typography>
-                      <Typography variant="caption" component="span" color="text.secondary" sx={{ ml: 1 }}>
+                      
+                      {log.runId && (
+                        <Tooltip title={`Run ID: ${log.runId}`} arrow placement="top">
+                          <Chip
+                            label={log.runId.length > 10 ? `Run: ${log.runId.substring(0, 10)}...` : `Run: ${log.runId}`}
+                            size="small"
+                            variant="outlined"
+                            color="info"
+                            sx={{ fontSize: '0.7rem' }}
+                          />
+                        </Tooltip>
+                      )}
+                      
+                      <Typography variant="caption" component="span" color="text.secondary">
                         ({formatTimestamp(log.timestamp)})
                       </Typography>
-                    </>
+                    </Stack>
                   }
                 />
               </ListItem>

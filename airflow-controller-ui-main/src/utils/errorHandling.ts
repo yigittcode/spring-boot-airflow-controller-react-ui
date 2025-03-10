@@ -62,15 +62,14 @@ export const extractErrorMessage = (error: any): string => {
  * Logs API errors to console with context
  */
 export const logApiError = (error: any, context: string = 'API Request'): void => {
-  console.error(`[${context}] API Error:`, error.response?.data?.message || error.message || 'Unknown error');
-  
-  // Additional detailed logging
-  if (error.response) {
-    console.error(`Status: ${error.response.status} ${error.response.statusText}`);
-    if (error.response.data) {
-      console.error('Error details:', error.response.data);
-    }
-  } else if (error.request) {
-    console.error('No response received:', error.request);
-  }
+  // Create a structured error message for consistent logging
+  const errorDetails = {
+    message: error.response?.data?.message || error.message || 'Unknown error',
+    status: error.response?.status,
+    statusText: error.response?.statusText,
+    data: error.response?.data || null,
+    url: error.config?.url || null
+  };
+
+  console.error(`[${context}] API Error:`, errorDetails);
 }; 
